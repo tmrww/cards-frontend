@@ -55,6 +55,35 @@ export const GameView: React.FC<GameViewProps> = ({
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [bombGroupMap, setBombGroupMap] = useState<Map<string, number>>(new Map());
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const handContainerRef = useRef<HTMLDivElement>(null);
+  const [handRowWidth, setHandRowWidth] = useState<number>(1000);
+
+  useEffect(() => {
+    const updateWidth = () => {
+      if (handContainerRef.current) {
+        setHandRowWidth(handContainerRef.current.clientWidth);
+      }
+    };
+    updateWidth();
+    window.addEventListener("resize", updateWidth);
+    return () => window.removeEventListener("resize", updateWidth);
+  }, []);
+
+  // Compute dynamic overlap so all cards fit without clipping even in tiled windows
+  const cardMarginLeft = useMemo(() => {
+    const count = orderedHand.length;
+    if (count <= 1) return 0;
+    const cardWidth = 62;
+    const available = Math.max(300, handRowWidth - 40);
+    // If natural width exceeds available width, increase negative margin
+    const neededWidth = count * cardWidth;
+    if (neededWidth > available) {
+      const overlapPerCard = (neededWidth - available) / (count - 1);
+      const margin = -Math.min(46, Math.max(18, Math.ceil(overlapPerCard)));
+      return margin;
+    }
+    return -20;
+  }, [orderedHand.length, handRowWidth]);
 
   // Track which team won the previous stage so we know whose stage is active
   const lastWinningTeamRef = useRef<number>(0);
@@ -613,7 +642,7 @@ export const GameView: React.FC<GameViewProps> = ({
           </div>
         </div>
 
-        <div className="hand-row">
+        <div className="hand-row" ref={handContainerRef}>
           {orderedHand.length === 0 ? (
             <div className="empty-hand-msg">
               {view?.state === "WAITING"
@@ -641,11 +670,10 @@ export const GameView: React.FC<GameViewProps> = ({
                   onDragOver={(e) => handleDragOver(e, index)}
                   onDragEnd={handleDragEnd}
                   onClick={() => toggleCardSelection(card.id)}
-                  style={
-                    bombColor
-                      ? { borderBottom: `3px solid ${bombColor.border}` }
-                      : undefined
-                  }
+                  style={{
+                    marginLeft: index === 0 ? 0 : `${cardMarginLeft}px`,
+                    ...(bombColor ? { borderBottom: `3px solid ${bombColor.border}` } : {}),
+                  }}
                   className={[
                     "hand-card",
                     red ? "card-red" : "card-black",

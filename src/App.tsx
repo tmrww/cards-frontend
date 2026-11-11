@@ -10,9 +10,16 @@ import {
   ServerMessage,
 } from "./types";
 
-const WS_URL =
-  (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL ||
-  `ws://${window.location.hostname || "localhost"}:8080`;
+function getWebSocketUrl(): string {
+  const envUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL;
+  if (envUrl) return envUrl;
+  if (typeof window === "undefined") return "ws://localhost:8080";
+
+  const isHttps = window.location.protocol === "https:";
+  const protocol = isHttps ? "wss:" : "ws:";
+  const host = window.location.hostname || "localhost";
+  return `${protocol}//${host}:8080`;
+}
 
 function getOrCreatePlayerId(): string {
   const existing = sessionStorage.getItem("guandan_player_id");
@@ -62,57 +69,67 @@ export const App: React.FC = () => {
       wsRef.current.close();
     }
 
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
+    try {
+      const url = getWebSocketUrl();
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
 
-    ws.onopen = () => {
-      setConnected(true);
-      setError(null);
-      ws.send(JSON.stringify({ type: "LIST_ROOMS" } satisfies ClientMessage));
-    };
+      ws.onopen = () => {
+        setConnected(true);
+        setError(null);
+        ws.send(JSON.stringify({ type: "LIST_ROOMS" } satisfies ClientMessage));
+      };
 
-    ws.onmessage = (event) => {
-      try {
-        const msg: ServerMessage = JSON.parse(event.data);
-        switch (msg.type) {
-          case "ROOM_CREATED":
-          case "ROOM_JOINED":
-            setRoomId(msg.roomId);
-            setError(null);
-            break;
+      ws.onmessage = (event) => {
+        try {
+          const msg: ServerMessage = JSON.parse(event.data);
+          switch (msg.type) {
+            case "ROOM_CREATED":
+            case "ROOM_JOINED":
+              setRoomId(msg.roomId);
+              setError(null);
+              break;
 
-          case "ROOM_LEFT":
-            setRoomId(null);
-            setGameView(null);
-            setError(null);
-            ws.send(JSON.stringify({ type: "LIST_ROOMS" } satisfies ClientMessage));
-            break;
+            case "ROOM_LEFT":
+              setRoomId(null);
+              setGameView(null);
+              setError(null);
+              ws.send(JSON.stringify({ type: "LIST_ROOMS" } satisfies ClientMessage));
+              break;
 
-          case "ROOM_LIST":
-            setRooms(msg.rooms);
-            break;
+            case "ROOM_LIST":
+              setRooms(msg.rooms);
+              break;
 
-          case "STATE_UPDATE":
-            setRoomId(msg.roomId);
-            setGameView(msg.view);
-            break;
+            case "STATE_UPDATE":
+              setRoomId(msg.roomId);
+              setGameView(msg.view);
+              break;
 
-          case "ERROR":
-            setError(msg.error);
-            break;
+            case "ERROR":
+              setError(msg.error);
+              break;
+          }
+        } catch {
+          setError("Received malformed server message.");
         }
-      } catch {
-        setError("Received malformed server message.");
-      }
-    };
+      };
 
-    ws.onclose = () => {
-      setConnected(false);
-    };
+      ws.onclose = () => {
+        setConnected(false);
+      };
 
-    ws.onerror = () => {
+      ws.onerror = () => {
+        setConnected(false);
+      };
+    } catch (err: unknown) {
       setConnected(false);
-    };
+      setError(
+        err instanceof Error
+          ? `WebSocket connection error: ${err.message}`
+          : "Failed to connect to WebSocket server."
+      );
+    }
   }, []);
 
   useEffect(() => {
