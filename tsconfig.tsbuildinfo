@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/components/gameview.tsx","./src/components/lobbyview.tsx","./src/utils/cards.ts"],"version":"5.7.3"}
+{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/components/basiclobbyview.tsx","./src/components/gameview.tsx","./src/components/lobbyview.tsx","./src/utils/cards.ts"],"version":"5.7.3"}

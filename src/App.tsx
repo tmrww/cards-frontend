@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { BasicLobbyView } from "./components/BasicLobbyView";
 import { LobbyView } from "./components/LobbyView";
 import { GameView } from "./components/GameView";
 import {
@@ -166,7 +167,7 @@ export const App: React.FC = () => {
 
   if (!roomId) {
     return (
-      <LobbyView
+      <BasicLobbyView
         connected={connected}
         playerId={playerId}
         playerName={playerName}
