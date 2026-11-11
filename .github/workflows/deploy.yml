@@ -37,6 +37,11 @@ jobs:
         run: npm ci
 
       - name: Build frontend
+        env:
+          VITE_WS_HOST: ${{ vars.VITE_WS_HOST || secrets.VITE_WS_HOST }}
+          VITE_WS_PORT: ${{ vars.VITE_WS_PORT || secrets.VITE_WS_PORT }}
+          VITE_WS_PROTOCOL: ${{ vars.VITE_WS_PROTOCOL || secrets.VITE_WS_PROTOCOL }}
+          VITE_WS_URL: ${{ vars.VITE_WS_URL || secrets.VITE_WS_URL }}
         run: npm run build
 
       - name: Setup Pages

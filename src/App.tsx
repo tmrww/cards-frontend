@@ -11,14 +11,39 @@ import {
 } from "./types";
 
 function getWebSocketUrl(): string {
-  const envUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL;
-  if (envUrl) return envUrl;
-  if (typeof window === "undefined") return "ws://localhost:8080";
+  const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
 
-  const isHttps = window.location.protocol === "https:";
-  const protocol = isHttps ? "wss:" : "ws:";
-  const host = window.location.hostname || "localhost";
-  return `${protocol}//${host}:8080`;
+  // If a full WebSocket URL is explicitly specified, use it directly
+  if (env.VITE_WS_URL) {
+    return env.VITE_WS_URL;
+  }
+
+  const host = env.VITE_WS_HOST || env.VITE_HOST;
+  if (!host) {
+    throw new Error("Missing VITE_WS_HOST environment variable.");
+  }
+
+  const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";
+  const protocol = env.VITE_WS_PROTOCOL || (isHttps ? "wss:" : "ws:");
+
+  const port =
+    env.VITE_WS_PORT !== undefined
+      ? env.VITE_WS_PORT
+      : env.VITE_PORT !== undefined
+      ? env.VITE_PORT
+      : "";
+
+  // Omit port if blank, "none", or standard default ports (443 / 80)
+  if (
+    !port ||
+    port === "none" ||
+    (protocol === "wss:" && port === "443") ||
+    (protocol === "ws:" && port === "80")
+  ) {
+    return `${protocol}//${host}`;
+  }
+
+  return `${protocol}//${host}:${port}`;
 }
 
 function getOrCreatePlayerId(): string {
