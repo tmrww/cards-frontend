@@ -48,6 +48,7 @@ export interface GuanDanPlayerView {
   ready: string[];
   currentStage?: number;
   stage: number[];
+  strikes: number[];
   won: string[];
   hand: Card[];
   currentRound: GuanDanCombination[];

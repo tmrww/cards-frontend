@@ -346,6 +346,8 @@ export const GameView: React.FC<GameViewProps> = ({
   const oppTeamIndex = (mySeatIndex + 1) % 2;
   const myTeamStage = view?.stage?.[myTeamIndex] ?? 2;
   const oppTeamStage = view?.stage?.[oppTeamIndex] ?? 2;
+  const myTeamStrikes = view?.strikes?.[myTeamIndex] ?? 0;
+  const oppTeamStrikes = view?.strikes?.[oppTeamIndex] ?? 0;
 
   const lastCombo: GuanDanCombination | undefined =
     view && view.currentRound.length > 0
@@ -670,7 +672,6 @@ export const GameView: React.FC<GameViewProps> = ({
           className={`player-circle ${slot.isTurn ? "circle-turn" : ""} ${slot.isMe ? "circle-me" : slot.isTeammate ? "circle-teammate" : ""
             } ${!p ? "circle-empty" : ""}`}
         >
-          <span className="seat-compass">{slot.direction}</span>
           <span className="seat-Initials">
             {p ? p.name.slice(0, 2).toUpperCase() : "—"}
           </span>
@@ -791,7 +792,13 @@ export const GameView: React.FC<GameViewProps> = ({
           <div className="info-row">
             <span className="info-label">Team Stages:</span>
             <span className="info-val">
-              Us: {formatStageRank(myTeamStage)} | Them: {formatStageRank(oppTeamStage)}
+              You: {formatStageRank(myTeamStage)} | Them: {formatStageRank(oppTeamStage)}
+            </span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Team Strikes:</span>
+            <span className="info-val">
+              You: {formatStageRank(myTeamStrikes)} | Them: {formatStageRank(oppTeamStrikes)}
             </span>
           </div>
           <div className="info-row">
