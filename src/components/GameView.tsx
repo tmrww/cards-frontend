@@ -514,9 +514,8 @@ export const GameView: React.FC<GameViewProps> = ({
     return (
       <span
         key={card.id}
-        className={`mini-card ${red ? "card-red" : "card-black"} ${
-          wild ? "card-wild" : ""
-        }`}
+        className={`mini-card ${red ? "card-red" : "card-black"} ${wild ? "card-wild" : ""
+          }`}
       >
         {getSuitSymbol(card.suit.id)}
         {getCardShortValue(card)}
@@ -553,14 +552,12 @@ export const GameView: React.FC<GameViewProps> = ({
 
     const seatNode = (
       <div
-        className={`player-seat seat-${dirLower} ${
-          slot.isTurn ? "seat-active-turn" : ""
-        }`}
+        className={`player-seat seat-${dirLower} ${slot.isTurn ? "seat-active-turn" : ""
+          }`}
       >
         <div
-          className={`player-circle ${slot.isTurn ? "circle-turn" : ""} ${
-            slot.isMe ? "circle-me" : slot.isTeammate ? "circle-teammate" : ""
-          } ${!p ? "circle-empty" : ""}`}
+          className={`player-circle ${slot.isTurn ? "circle-turn" : ""} ${slot.isMe ? "circle-me" : slot.isTeammate ? "circle-teammate" : ""
+            } ${!p ? "circle-empty" : ""}`}
         >
           <span className="seat-compass">{slot.direction}</span>
           <span className="seat-Initials">
@@ -589,10 +586,10 @@ export const GameView: React.FC<GameViewProps> = ({
                 {finishOrder >= 0
                   ? `Out (#${finishOrder + 1})`
                   : p.status
-                  ? p.status.toUpperCase()
-                  : slot.isTurn
-                  ? "THINKING"
-                  : "WAITING"}
+                    ? p.status.toUpperCase()
+                    : slot.isTurn
+                      ? "THINKING"
+                      : "WAITING"}
               </span>
             )}
           </div>
@@ -624,14 +621,12 @@ export const GameView: React.FC<GameViewProps> = ({
       {/* Non-blocking "Your Turn" Animated Pop-up (max 1s, 2x speed on mouse move) */}
       {showTurnPopup && (
         <div
-          className={`turn-popup-overlay ${
-            turnPopupFast ? "turn-popup-fast" : ""
-          }`}
+          className={`turn-popup-overlay ${turnPopupFast ? "turn-popup-fast" : ""
+            }`}
         >
           <div
-            className={`turn-popup-badge ${
-              turnPopupFast ? "turn-popup-fast" : ""
-            }`}
+            className={`turn-popup-badge ${turnPopupFast ? "turn-popup-fast" : ""
+              }`}
           >
             Your Turn!
           </div>
@@ -763,9 +758,8 @@ export const GameView: React.FC<GameViewProps> = ({
 
             {/* Center Scrollable & Togglable Chat-Box */}
             <div
-              className={`chat-box-container ${
-                isChatCollapsed ? "chat-collapsed" : ""
-              }`}
+              className={`chat-box-container ${isChatCollapsed ? "chat-collapsed" : ""
+                }`}
             >
               <div className="chat-header">
                 <span>Table Chat ({chatMessages.length})</span>
@@ -781,7 +775,7 @@ export const GameView: React.FC<GameViewProps> = ({
                 <>
                   <div className="chat-messages">
                     {chatMessages.length === 0 ? (
-                      <div className="chat-empty">No messages yet. Say hello!</div>
+                      <div className="chat-empty">blub blub blub</div>
                     ) : (
                       chatMessages.map((msg) => (
                         <div key={msg.id} className="chat-message-item">
@@ -937,9 +931,8 @@ export const GameView: React.FC<GameViewProps> = ({
                   ]
                     .filter(Boolean)
                     .join(" ")}
-                  title={`${card.value.name} of ${card.suit.name}${
-                    wild ? " (Wildcard)" : ""
-                  }`}
+                  title={`${card.value.name} of ${card.suit.name}${wild ? " (Wildcard)" : ""
+                    }`}
                 >
                   <div className="card-corner-top">
                     <span className="card-rank">{shortVal}</span>
