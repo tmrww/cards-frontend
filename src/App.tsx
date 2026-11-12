@@ -3,6 +3,7 @@ import { BasicLobbyView } from "./components/BasicLobbyView";
 import { LobbyView } from "./components/LobbyView";
 import { GameView } from "./components/GameView";
 import {
+  ChatMessage,
   ClientMessage,
   GuanDanAction,
   GuanDanPlayerView,
@@ -73,6 +74,7 @@ export const App: React.FC = () => {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [gameView, setGameView] = useState<GuanDanPlayerView | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -112,12 +114,14 @@ export const App: React.FC = () => {
             case "ROOM_CREATED":
             case "ROOM_JOINED":
               setRoomId(msg.roomId);
+              setChatMessages([]);
               setError(null);
               break;
 
             case "ROOM_LEFT":
               setRoomId(null);
               setGameView(null);
+              setChatMessages([]);
               setError(null);
               ws.send(JSON.stringify({ type: "LIST_ROOMS" } satisfies ClientMessage));
               break;
@@ -129,6 +133,17 @@ export const App: React.FC = () => {
             case "STATE_UPDATE":
               setRoomId(msg.roomId);
               setGameView(msg.view);
+              break;
+
+            case "CHAT_MESSAGE":
+              setChatMessages((prev) => [
+                ...prev,
+                {
+                  id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                  sender: msg.playerName,
+                  text: msg.message,
+                },
+              ]);
               break;
 
             case "ERROR":
@@ -193,6 +208,7 @@ export const App: React.FC = () => {
     sendMessage({ type: "LEAVE_ROOM" });
     setRoomId(null);
     setGameView(null);
+    setChatMessages([]);
   };
 
   const handleRefreshRooms = () => {
@@ -204,6 +220,17 @@ export const App: React.FC = () => {
     sendMessage({
       type: "GAME_ACTION",
       action,
+    });
+  };
+
+  const handleSendMessage = (text: string) => {
+    setError(null);
+    sendMessage({
+      type: "SEND_MESSAGE",
+      roomId: roomId ?? undefined,
+      playerId,
+      playerName: playerName.trim() || playerId,
+      message: text,
     });
   };
 
@@ -231,8 +258,10 @@ export const App: React.FC = () => {
       playerId={playerId}
       view={gameView}
       error={error}
+      chatMessages={chatMessages}
       onClearError={() => setError(null)}
       onSendAction={handleSendAction}
+      onSendMessage={handleSendMessage}
       onLeaveRoom={handleLeaveRoom}
     />
   );

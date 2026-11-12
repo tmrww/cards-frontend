@@ -63,6 +63,12 @@ export interface RoomSummary {
   playerCount: number;
 }
 
+export interface ChatMessage {
+  id: string;
+  sender: string;
+  text: string;
+}
+
 export type GuanDanAction =
   | { type: "READY" }
   | { type: "PLAY"; payload: { cardIds: string[] } }
@@ -71,6 +77,7 @@ export type GuanDanAction =
 export type ClientMessage =
   | { type: "CREATE_ROOM"; gameType: string; playerId: string; playerName: string }
   | { type: "JOIN_ROOM"; roomId: string; playerId: string; playerName: string }
+  | { type: "SEND_MESSAGE"; roomId?: string; playerId?: string; playerName?: string; message: string }
   | { type: "LEAVE_ROOM" }
   | { type: "LIST_ROOMS" }
   | { type: "START_GAME" }
@@ -82,5 +89,6 @@ export type ServerMessage =
   | { type: "ROOM_LEFT" }
   | { type: "ROOM_LIST"; rooms: RoomSummary[] }
   | { type: "STATE_UPDATE"; roomId: string; view: GuanDanPlayerView }
+  | { type: "CHAT_MESSAGE"; roomId: string; playerId: string; playerName: string; message: string }
   | { type: "ERROR"; error: string };
 

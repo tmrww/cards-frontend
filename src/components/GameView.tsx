@@ -1,5 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Card, GuanDanAction, GuanDanCombination, GuanDanPlayerInfo, GuanDanPlayerView } from "../types";
+import {
+  Card,
+  ChatMessage,
+  GuanDanAction,
+  GuanDanCombination,
+  GuanDanPlayerInfo,
+  GuanDanPlayerView,
+} from "../types";
 import {
   formatComboType,
   formatMainRank,
@@ -18,8 +25,10 @@ interface GameViewProps {
   playerId: string;
   view: GuanDanPlayerView | null;
   error: string | null;
+  chatMessages: ChatMessage[];
   onClearError: () => void;
   onSendAction: (action: GuanDanAction) => void;
+  onSendMessage: (message: string) => void;
   onLeaveRoom: () => void;
 }
 
@@ -31,13 +40,6 @@ interface SeatSlot {
   isMe: boolean;
   isTeammate: boolean;
   isTurn: boolean;
-}
-
-interface ChatMessage {
-  id: string;
-  sender: string;
-  text: string;
-  time: string;
 }
 
 const BOMB_GROUP_PALETTE: { text: string; bg: string; border: string }[] = [
@@ -55,8 +57,10 @@ export const GameView: React.FC<GameViewProps> = ({
   playerId,
   view,
   error,
+  chatMessages,
   onClearError,
   onSendAction,
+  onSendMessage,
   onLeaveRoom,
 }) => {
   const [orderedHand, setOrderedHand] = useState<Card[]>([]);
@@ -70,8 +74,7 @@ export const GameView: React.FC<GameViewProps> = ({
   // Seat visual turn order around the table (default: clockwise)
   const [turnOrder, setTurnOrder] = useState<"clockwise" | "counterclockwise">("clockwise");
 
-  // Local Table Chat state (unconnected to WebSocket)
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  // Chat input and collapse state
   const [chatInput, setChatInput] = useState<string>("");
   const [isChatCollapsed, setIsChatCollapsed] = useState<boolean>(false);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
@@ -501,20 +504,7 @@ export const GameView: React.FC<GameViewProps> = ({
     e.preventDefault();
     const trimmed = chatInput.trim();
     if (!trimmed) return;
-    const senderName = getPlayerName(playerId) || "You";
-    const timeStr = new Date().toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    setChatMessages((prev) => [
-      ...prev,
-      {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        sender: senderName,
-        text: trimmed,
-        time: timeStr,
-      },
-    ]);
+    onSendMessage(trimmed);
     setChatInput("");
   };
 
@@ -797,7 +787,6 @@ export const GameView: React.FC<GameViewProps> = ({
                         <div key={msg.id} className="chat-message-item">
                           <span className="chat-msg-sender">{msg.sender}:</span>
                           <span>{msg.text}</span>
-                          <span className="chat-msg-time">{msg.time}</span>
                         </div>
                       ))
                     )}
