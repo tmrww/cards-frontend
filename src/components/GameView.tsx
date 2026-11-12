@@ -823,7 +823,7 @@ export const GameView: React.FC<GameViewProps> = ({
         {/* North (Teammate) */}
         <div className="table-north">{renderPlayerNode(seats.N)}</div>
 
-        {/* Middle Row: West, Center Table Felt (Status + Chat-Box), East */}
+        {/* Middle Row: West, Center Table Felt, East */}
         <div className="table-middle-row">
           <div className="table-west">{renderPlayerNode(seats.W)}</div>
 
@@ -853,56 +853,6 @@ export const GameView: React.FC<GameViewProps> = ({
                 </p>
               </div>
             )}
-
-            {/* Center Scrollable & Togglable Chat-Box */}
-            <div
-              className={`chat-box-container ${isChatCollapsed ? "chat-collapsed" : ""
-                }`}
-            >
-              <div className="chat-header">
-                <span>Table Chat ({chatMessages.length})</span>
-                <button
-                  type="button"
-                  className="btn-secondary btn-small chat-toggle-btn"
-                  onClick={() => setIsChatCollapsed((prev) => !prev)}
-                >
-                  {isChatCollapsed ? "Expand ▲" : "Hide ▼"}
-                </button>
-              </div>
-              {!isChatCollapsed && (
-                <>
-                  <div className="chat-messages">
-                    {chatMessages.length === 0 ? (
-                      <div className="chat-empty">blub blub blub</div>
-                    ) : (
-                      chatMessages.map((msg) => (
-                        <div key={msg.id} className="chat-message-item">
-                          <span className="chat-msg-sender">{msg.sender}:</span>
-                          <span>{msg.text}</span>
-                        </div>
-                      ))
-                    )}
-                    <div ref={chatMessagesEndRef} />
-                  </div>
-                  <form className="chat-input-row" onSubmit={handleSendChat}>
-                    <input
-                      type="text"
-                      className="chat-input"
-                      placeholder="Type a message..."
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                    />
-                    <button
-                      type="submit"
-                      className="chat-send-btn"
-                      disabled={!chatInput.trim()}
-                    >
-                      Send
-                    </button>
-                  </form>
-                </>
-              )}
-            </div>
           </div>
 
           <div className="table-east">{renderPlayerNode(seats.E)}</div>
@@ -910,6 +860,56 @@ export const GameView: React.FC<GameViewProps> = ({
 
         {/* South (You) */}
         <div className="table-south">{renderPlayerNode(seats.S)}</div>
+
+        {/* Bottom-Right Floating Chat Box (above hand area) */}
+        <div
+          className={`chat-box-container ${isChatCollapsed ? "chat-collapsed" : ""
+            }`}
+        >
+          <div className="chat-header">
+            <span>Table Chat ({chatMessages.length})</span>
+            <button
+              type="button"
+              className="btn-secondary btn-small chat-toggle-btn"
+              onClick={() => setIsChatCollapsed((prev) => !prev)}
+            >
+              {isChatCollapsed ? "Expand ▲" : "Hide ▼"}
+            </button>
+          </div>
+          {!isChatCollapsed && (
+            <>
+              <div className="chat-messages">
+                {chatMessages.length === 0 ? (
+                  <div className="chat-empty">blub blub blub</div>
+                ) : (
+                  chatMessages.map((msg) => (
+                    <div key={msg.id} className="chat-message-item">
+                      <span className="chat-msg-sender">{msg.sender}:</span>
+                      <span>{msg.text}</span>
+                    </div>
+                  ))
+                )}
+                <div ref={chatMessagesEndRef} />
+              </div>
+              <form className="chat-input-row" onSubmit={handleSendChat}>
+                <input
+                  type="text"
+                  className="chat-input"
+                  placeholder="Type a message..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  className="chat-send-btn"
+                  disabled={!chatInput.trim()}
+                >
+                  Send
+                </button>
+              </form>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Bottom Controls + Error Banner Right Above Hand + Player Hand */}
