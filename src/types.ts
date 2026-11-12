@@ -46,6 +46,7 @@ export interface GuanDanPlayerView {
   turn: number;
   state: "WAITING" | "PLAYING" | "ENDED";
   ready: string[];
+  currentStage?: number;
   stage: number[];
   won: string[];
   hand: Card[];

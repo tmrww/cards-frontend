@@ -7,6 +7,7 @@ import {
   getCardShortValue,
   getSuitSymbol,
   isRedCard,
+  isValidBombGroup,
   isWildcard,
   sortBombsToEnd,
   sortCardsLowToHigh,
@@ -32,6 +33,13 @@ interface SeatSlot {
   isTurn: boolean;
 }
 
+interface ChatMessage {
+  id: string;
+  sender: string;
+  text: string;
+  time: string;
+}
+
 const BOMB_GROUP_PALETTE: { text: string; bg: string; border: string }[] = [
   { text: "#6d28d9", bg: "#ede9fe", border: "#7c3aed" }, // Violet
   { text: "#1d4ed8", bg: "#dbeafe", border: "#2563eb" }, // Blue
@@ -52,11 +60,29 @@ export const GameView: React.FC<GameViewProps> = ({
   onLeaveRoom,
 }) => {
   const [orderedHand, setOrderedHand] = useState<Card[]>([]);
+  const orderedHandRef = useRef<Card[]>([]);
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [bombGroupMap, setBombGroupMap] = useState<Map<string, number>>(new Map());
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const handContainerRef = useRef<HTMLDivElement>(null);
   const [handRowWidth, setHandRowWidth] = useState<number>(1000);
+
+  // Seat visual turn order around the table (default: clockwise)
+  const [turnOrder, setTurnOrder] = useState<"clockwise" | "counterclockwise">("clockwise");
+
+  // Local Table Chat state (unconnected to WebSocket)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState<string>("");
+  const [isChatCollapsed, setIsChatCollapsed] = useState<boolean>(false);
+  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
+
+  // "Your Turn" pop-up animation state
+  const [showTurnPopup, setShowTurnPopup] = useState<boolean>(false);
+  const [turnPopupFast, setTurnPopupFast] = useState<boolean>(false);
+  const prevIsMyTurnRef = useRef<boolean>(false);
+  const turnPopupTimerRef = useRef<number | null>(null);
+  const turnPopupStartRef = useRef<number>(0);
+  const turnPopupFastRef = useRef<boolean>(false);
 
   useEffect(() => {
     const updateWidth = () => {
@@ -87,29 +113,42 @@ export const GameView: React.FC<GameViewProps> = ({
 
   // Track which team won the previous stage so we know whose stage is active
   const lastWinningTeamRef = useRef<number>(0);
+  const prevStagesRef = useRef<[number, number]>([2, 2]);
   const prevGameStateRef = useRef<string | undefined>(undefined);
   const lastPlayedIdsRef = useRef<Set<string>>(new Set());
 
   // Compute active stage number (2..13, or 1 for Ace)
+  // Uses authoritative view.currentStage from the backend, with fallback to stage inference
   const activeStage = useMemo(() => {
     if (!view) return 2;
+    if (view.currentStage !== undefined) {
+      return view.currentStage;
+    }
     const [stage0 = 2, stage1 = 2] = view.stage ?? [2, 2];
-    if (stage0 === stage1) return stage0;
+    const [prev0, prev1] = prevStagesRef.current;
 
-    if (view.won && view.won.length > 0) {
+    if (view.state !== "PLAYING" && view.won && view.won.length > 0) {
       const firstWinnerIdx = view.players.findIndex((p) => p.id === view.won[0]);
       if (firstWinnerIdx !== -1) {
-        const winTeam = firstWinnerIdx % 2;
-        lastWinningTeamRef.current = winTeam;
-        return view.stage[winTeam] ?? stage0;
+        lastWinningTeamRef.current = firstWinnerIdx % 2;
+      }
+    } else if (stage0 !== prev0 || stage1 !== prev1) {
+      if (stage0 !== prev0 && stage1 === prev1) {
+        lastWinningTeamRef.current = 0;
+      } else if (stage1 !== prev1 && stage0 === prev0) {
+        lastWinningTeamRef.current = 1;
       }
     }
+    prevStagesRef.current = [stage0, stage1];
+
+    if (stage0 === stage1) return stage0;
     return view.stage[lastWinningTeamRef.current] ?? stage0;
   }, [view]);
 
-  // Synchronize local orderedHand with server view.hand
+  // Synchronize local orderedHand and bombGroupMap with server view.hand
   useEffect(() => {
     if (!view) {
+      orderedHandRef.current = [];
       setOrderedHand([]);
       setSelectedCardIds(new Set());
       setBombGroupMap(new Map());
@@ -120,75 +159,84 @@ export const GameView: React.FC<GameViewProps> = ({
     const prevState = prevGameStateRef.current;
     prevGameStateRef.current = view.state;
 
-    setOrderedHand((prevHand) => {
-      if (serverHand.length === 0) {
-        return [];
-      }
+    if (serverHand.length === 0) {
+      orderedHandRef.current = [];
+      setOrderedHand([]);
+      setSelectedCardIds(new Set());
+      setBombGroupMap(new Map());
+      return;
+    }
 
-      // If transitioning into PLAYING or hand grew (new deal), sort lowest to highest grouped by value
-      const isNewDeal =
-        prevHand.length === 0 ||
-        serverHand.length > prevHand.length ||
-        (prevState === "WAITING" && view.state === "PLAYING");
+    const prevHand = orderedHandRef.current;
+    const isNewDeal =
+      prevHand.length === 0 ||
+      serverHand.length > prevHand.length ||
+      (prevState === "WAITING" && view.state === "PLAYING");
 
-      if (isNewDeal) {
-        setBombGroupMap(new Map());
-        setSelectedCardIds(new Set());
-        return sortCardsLowToHigh(serverHand, activeStage);
-      }
+    if (isNewDeal) {
+      const sorted = sortCardsLowToHigh(serverHand, activeStage);
+      orderedHandRef.current = sorted;
+      setOrderedHand(sorted);
+      setBombGroupMap(new Map());
+      setSelectedCardIds(new Set());
+      return;
+    }
 
-      // Otherwise preserve existing custom drag/sort order for remaining cards
-      const serverById = new Map<string, Card>();
-      for (const c of serverHand) {
-        serverById.set(c.id, c);
-      }
+    // Preserve existing custom drag/sort order for remaining cards
+    const serverById = new Map<string, Card>();
+    for (const c of serverHand) {
+      serverById.set(c.id, c);
+    }
 
-      // Handle duplicate cards across the 2 decks: if a played card ID is still in serverHand
-      // because backend Deck.removeCard removed an identical twin first, swap it into the twin's slot
-      const adjustedPrev = [...prevHand];
-      const playedIds = lastPlayedIdsRef.current;
-      if (playedIds.size > 0) {
-        for (let i = 0; i < adjustedPrev.length; i++) {
-          const c = adjustedPrev[i];
-          if (!serverById.has(c.id) && !playedIds.has(c.id)) {
-            const swapIdx = adjustedPrev.findIndex(
-              (other, idx) =>
-                idx !== i &&
-                playedIds.has(other.id) &&
-                serverById.has(other.id) &&
-                other.suit.id === c.suit.id &&
-                other.value.value === c.value.value
-            );
-            if (swapIdx !== -1) {
-              const temp = adjustedPrev[i];
-              adjustedPrev[i] = adjustedPrev[swapIdx];
-              adjustedPrev[swapIdx] = temp;
-              playedIds.delete(adjustedPrev[i].id);
-            }
+    // Handle duplicate cards across the 2 decks: if a played card ID is still in serverHand
+    // because backend Deck.removeCard removed an identical twin first, swap it into the twin's slot
+    const adjustedPrev = [...prevHand];
+    const playedIds = lastPlayedIdsRef.current;
+    const twinReplacementMap = new Map<string, string>();
+    const swappedPlayedTwinIds = new Set<string>();
+
+    if (playedIds.size > 0) {
+      for (let i = 0; i < adjustedPrev.length; i++) {
+        const c = adjustedPrev[i];
+        if (!serverById.has(c.id) && !playedIds.has(c.id)) {
+          const swapIdx = adjustedPrev.findIndex(
+            (other, idx) =>
+              idx !== i &&
+              playedIds.has(other.id) &&
+              serverById.has(other.id) &&
+              other.suit.id === c.suit.id &&
+              other.value.value === c.value.value
+          );
+          if (swapIdx !== -1) {
+            const other = adjustedPrev[swapIdx];
+            twinReplacementMap.set(c.id, other.id);
+            swappedPlayedTwinIds.add(other.id);
+            adjustedPrev[i] = other;
+            adjustedPrev[swapIdx] = c;
+            playedIds.delete(other.id);
           }
         }
-        lastPlayedIdsRef.current = new Set();
       }
+      lastPlayedIdsRef.current = new Set();
+    }
 
-      const kept: Card[] = [];
-      const keptIds = new Set<string>();
-      for (const oldCard of adjustedPrev) {
-        const match = serverById.get(oldCard.id);
-        if (match) {
-          kept.push(match);
-          keptIds.add(match.id);
-        }
+    const kept: Card[] = [];
+    const keptIds = new Set<string>();
+    for (const oldCard of adjustedPrev) {
+      const match = serverById.get(oldCard.id);
+      if (match) {
+        kept.push(match);
+        keptIds.add(match.id);
       }
+    }
 
-      // In case any card in serverHand wasn't in prevHand, append it sorted
-      const added = serverHand.filter((c) => !keptIds.has(c.id));
-      if (added.length > 0) {
-        return [...kept, ...sortCardsLowToHigh(added, activeStage)];
-      }
-      return kept;
-    });
+    const added = serverHand.filter((c) => !keptIds.has(c.id));
+    const nextHand =
+      added.length > 0 ? [...kept, ...sortCardsLowToHigh(added, activeStage)] : kept;
+    orderedHandRef.current = nextHand;
+    setOrderedHand(nextHand);
 
-    // Clean up selected IDs and bomb highlights that are no longer in hand
+    // Clean up selected IDs that are no longer in hand
     const validIds = new Set(serverHand.map((c) => c.id));
     setSelectedCardIds((prev) => {
       const next = new Set<string>();
@@ -197,13 +245,43 @@ export const GameView: React.FC<GameViewProps> = ({
       }
       return next;
     });
+
+    // Re-validate bomb groups so broken bombs immediately lose their bomb badge/border
     setBombGroupMap((prev) => {
       if (prev.size === 0) return prev;
-      const next = new Map<string, number>();
+      const candidateMap = new Map<string, number>();
       for (const [id, groupIdx] of prev.entries()) {
-        if (validIds.has(id)) next.set(id, groupIdx);
+        if (swappedPlayedTwinIds.has(id)) {
+          // This twin ID was actually played by the user; its slot was removed
+          continue;
+        }
+        const replacementId = twinReplacementMap.get(id);
+        if (replacementId && serverById.has(replacementId)) {
+          candidateMap.set(replacementId, groupIdx);
+        } else if (serverById.has(id)) {
+          candidateMap.set(id, groupIdx);
+        }
       }
-      return next;
+
+      const groups = new Map<number, Card[]>();
+      for (const [cardId, groupIdx] of candidateMap.entries()) {
+        const cardObj = serverById.get(cardId);
+        if (cardObj) {
+          const list = groups.get(groupIdx) ?? [];
+          list.push(cardObj);
+          groups.set(groupIdx, list);
+        }
+      }
+
+      const validated = new Map<string, number>();
+      for (const [groupIdx, groupCards] of groups.entries()) {
+        if (isValidBombGroup(groupCards, activeStage)) {
+          for (const cardObj of groupCards) {
+            validated.set(cardObj.id, groupIdx);
+          }
+        }
+      }
+      return validated;
     });
   }, [view, activeStage]);
 
@@ -215,6 +293,8 @@ export const GameView: React.FC<GameViewProps> = ({
   }, [view, playerId]);
 
   // Build NESW seats with S = You, N = Teammate ((mySeatIndex + 2) % 4)
+  // Clockwise (Bottom -> Left -> Top -> Right): W is +1, E is +3
+  // Counterclockwise (Bottom -> Right -> Top -> Left): E is +1, W is +3
   const seats: Record<"N" | "E" | "S" | "W", SeatSlot> = useMemo(() => {
     const players = view?.players ?? [];
     const makeSlot = (
@@ -235,13 +315,16 @@ export const GameView: React.FC<GameViewProps> = ({
       };
     };
 
+    const westOffset = turnOrder === "clockwise" ? 1 : 3;
+    const eastOffset = turnOrder === "clockwise" ? 3 : 1;
+
     return {
       S: makeSlot("S", 0, "South (You)"),
-      E: makeSlot("E", 1, "East (Opponent)"),
+      W: makeSlot("W", westOffset, "West (Opponent)"),
       N: makeSlot("N", 2, "North (Teammate)"),
-      W: makeSlot("W", 3, "West (Opponent)"),
+      E: makeSlot("E", eastOffset, "East (Opponent)"),
     };
-  }, [view, mySeatIndex, playerId]);
+  }, [view, mySeatIndex, playerId, turnOrder]);
 
   const myTeamIndex = mySeatIndex % 2;
   const oppTeamIndex = (mySeatIndex + 1) % 2;
@@ -256,6 +339,72 @@ export const GameView: React.FC<GameViewProps> = ({
   const isMyTurn =
     view?.state === "PLAYING" && view.players[view.turn]?.id === playerId;
   const isReady = view?.ready?.includes(playerId) ?? false;
+
+  // Trigger "Your Turn" animated pop-up when transitioning into player's turn (max 1000ms)
+  useEffect(() => {
+    const wasMyTurn = prevIsMyTurnRef.current;
+    prevIsMyTurnRef.current = isMyTurn;
+
+    if (isMyTurn && !wasMyTurn) {
+      if (turnPopupTimerRef.current !== null) {
+        window.clearTimeout(turnPopupTimerRef.current);
+      }
+      turnPopupStartRef.current = Date.now();
+      turnPopupFastRef.current = false;
+      setTurnPopupFast(false);
+      setShowTurnPopup(true);
+      turnPopupTimerRef.current = window.setTimeout(() => {
+        setShowTurnPopup(false);
+        turnPopupTimerRef.current = null;
+      }, 1000);
+    } else if (!isMyTurn && showTurnPopup) {
+      if (turnPopupTimerRef.current !== null) {
+        window.clearTimeout(turnPopupTimerRef.current);
+        turnPopupTimerRef.current = null;
+      }
+      setShowTurnPopup(false);
+    }
+  }, [isMyTurn, showTurnPopup]);
+
+  useEffect(() => {
+    return () => {
+      if (turnPopupTimerRef.current !== null) {
+        window.clearTimeout(turnPopupTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Speed up "Your Turn" pop-up to 2x speed (500ms total / halves remaining time) on mouse movement
+  const speedUpTurnPopupOnMouseMove = () => {
+    if (!showTurnPopup || turnPopupFastRef.current) return;
+    turnPopupFastRef.current = true;
+    setTurnPopupFast(true);
+
+    const elapsed = Date.now() - turnPopupStartRef.current;
+    const remainingFast = Math.min(500, Math.max(0, Math.ceil((1000 - elapsed) / 2)));
+
+    if (turnPopupTimerRef.current !== null) {
+      window.clearTimeout(turnPopupTimerRef.current);
+    }
+    turnPopupTimerRef.current = window.setTimeout(() => {
+      setShowTurnPopup(false);
+      turnPopupTimerRef.current = null;
+    }, remainingFast);
+  };
+
+  useEffect(() => {
+    if (!showTurnPopup) return;
+    const onMove = () => speedUpTurnPopupOnMouseMove();
+    window.addEventListener("mousemove", onMove);
+    return () => window.removeEventListener("mousemove", onMove);
+  }, [showTurnPopup]);
+
+  // Auto-scroll chat messages when a new message is added
+  useEffect(() => {
+    if (!isChatCollapsed) {
+      chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages, isChatCollapsed]);
 
   const getPlayerName = (id: string): string => {
     const found = view?.players.find((p) => p.id === id);
@@ -298,6 +447,7 @@ export const GameView: React.FC<GameViewProps> = ({
       const updated = [...prev];
       const [moved] = updated.splice(draggedIdx, 1);
       updated.splice(targetIndex, 0, moved);
+      orderedHandRef.current = updated;
       return updated;
     });
     setDraggedIdx(targetIndex);
@@ -309,13 +459,18 @@ export const GameView: React.FC<GameViewProps> = ({
 
   // Sort handlers
   const handleSortDefault = () => {
-    setOrderedHand((prev) => sortCardsLowToHigh(prev, activeStage));
+    setOrderedHand((prev) => {
+      const sorted = sortCardsLowToHigh(prev, activeStage);
+      orderedHandRef.current = sorted;
+      return sorted;
+    });
     setBombGroupMap(new Map());
   };
 
   const handleSortBombsToEnd = () => {
     setOrderedHand((prev) => {
       const { sorted, bombGroupMap: nextGroupMap } = sortBombsToEnd(prev, activeStage);
+      orderedHandRef.current = sorted;
       setBombGroupMap(nextGroupMap);
       return sorted;
     });
@@ -342,15 +497,73 @@ export const GameView: React.FC<GameViewProps> = ({
     setSelectedCardIds(new Set());
   };
 
-  // Render a single player seat (circle + info underneath)
+  const handleSendChat = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = chatInput.trim();
+    if (!trimmed) return;
+    const senderName = getPlayerName(playerId) || "You";
+    const timeStr = new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    setChatMessages((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        sender: senderName,
+        text: trimmed,
+        time: timeStr,
+      },
+    ]);
+    setChatInput("");
+  };
+
+  const renderMiniCard = (card: Card) => {
+    const red = isRedCard(card);
+    const wild = isWildcard(card, activeStage);
+    return (
+      <span
+        key={card.id}
+        className={`mini-card ${red ? "card-red" : "card-black"} ${
+          wild ? "card-wild" : ""
+        }`}
+      >
+        {getSuitSymbol(card.suit.id)}
+        {getCardShortValue(card)}
+      </span>
+    );
+  };
+
+  // Render a single player's seat node + their adjacent played cards / PASSED status area
+  // S: play area ABOVE seat; N: play area BELOW seat; E: play area LEFT of seat; W: play area RIGHT of seat
   const renderPlayerNode = (slot: SeatSlot) => {
     const p = slot.player;
     const playerReady = p ? view?.ready?.includes(p.id) : false;
     const finishOrder = p && view?.won ? view.won.indexOf(p.id) : -1;
+    const combo =
+      view?.state === "PLAYING" && p ? latestPlayByPlayer.get(p.id) : undefined;
+    const isLatest = Boolean(combo && lastCombo && combo === lastCombo);
+    const dirLower = slot.direction.toLowerCase();
 
-    return (
+    const playAreaNode = (
       <div
-        className={`player-seat seat-${slot.direction.toLowerCase()} ${
+        className={`player-play-area ${isLatest ? "latest-play-highlight" : ""}`}
+      >
+        {view?.state === "PLAYING" && p?.status === "passed" ? (
+          <div className="passed-label">PASSED</div>
+        ) : combo ? (
+          <div className="played-combo-cards">
+            {combo.cards.map((c) => renderMiniCard(c))}
+          </div>
+        ) : (
+          <div className="no-play-label">—</div>
+        )}
+      </div>
+    );
+
+    const seatNode = (
+      <div
+        className={`player-seat seat-${dirLower} ${
           slot.isTurn ? "seat-active-turn" : ""
         }`}
       >
@@ -396,27 +609,46 @@ export const GameView: React.FC<GameViewProps> = ({
         </div>
       </div>
     );
-  };
 
-  const renderMiniCard = (card: Card) => {
-    const red = isRedCard(card);
-    const wild = isWildcard(card, activeStage);
+    const playFirst = slot.direction === "S" || slot.direction === "E";
+
     return (
-      <span
-        key={card.id}
-        className={`mini-card ${red ? "card-red" : "card-black"} ${
-          wild ? "card-wild" : ""
-        }`}
-      >
-        {getSuitSymbol(card.suit.id)}
-        {getCardShortValue(card)}
-      </span>
+      <div className={`seat-with-play seat-with-play-${dirLower}`}>
+        {playFirst ? (
+          <>
+            {playAreaNode}
+            {seatNode}
+          </>
+        ) : (
+          <>
+            {seatNode}
+            {playAreaNode}
+          </>
+        )}
+      </div>
     );
   };
 
   return (
-    <div className="game-screen">
-      {/* Top-Left Error & Room Banner */}
+    <div className="game-screen" onMouseMove={speedUpTurnPopupOnMouseMove}>
+      {/* Non-blocking "Your Turn" Animated Pop-up (max 1s, 2x speed on mouse move) */}
+      {showTurnPopup && (
+        <div
+          className={`turn-popup-overlay ${
+            turnPopupFast ? "turn-popup-fast" : ""
+          }`}
+        >
+          <div
+            className={`turn-popup-badge ${
+              turnPopupFast ? "turn-popup-fast" : ""
+            }`}
+          >
+            Your Turn!
+          </div>
+        </div>
+      )}
+
+      {/* Top-Left Room Banner */}
       <div className="top-left-bar">
         <div className="room-badge">
           Room: <strong>{roomId}</strong>
@@ -424,14 +656,6 @@ export const GameView: React.FC<GameViewProps> = ({
         <button type="button" className="btn-secondary btn-small" onClick={onLeaveRoom}>
           Leave Room
         </button>
-        {error && (
-          <div className="game-error-toast">
-            <span>{error}</span>
-            <button type="button" className="btn-clear" onClick={onClearError}>
-              ✕
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Top-Right Game Information Panel */}
@@ -463,6 +687,19 @@ export const GameView: React.FC<GameViewProps> = ({
               ? view.players[view.turn]?.name ?? "—"
               : "—"}
           </span>
+        </div>
+        <div className="info-row">
+          <span className="info-label">Turn Order:</span>
+          <select
+            className="turn-order-select"
+            value={turnOrder}
+            onChange={(e) =>
+              setTurnOrder(e.target.value as "clockwise" | "counterclockwise")
+            }
+          >
+            <option value="clockwise">Clockwise</option>
+            <option value="counterclockwise">Counterclockwise</option>
+          </select>
         </div>
 
         <hr className="info-divider" />
@@ -503,7 +740,7 @@ export const GameView: React.FC<GameViewProps> = ({
         {/* North (Teammate) */}
         <div className="table-north">{renderPlayerNode(seats.N)}</div>
 
-        {/* Middle Row: West, Center Table Felt, East */}
+        {/* Middle Row: West, Center Table Felt (Status + Chat-Box), East */}
         <div className="table-middle-row">
           <div className="table-west">{renderPlayerNode(seats.W)}</div>
 
@@ -534,39 +771,57 @@ export const GameView: React.FC<GameViewProps> = ({
               </div>
             )}
 
-            {view?.state === "PLAYING" && (
-              <div className="center-plays-grid">
-                {(["N", "W", "E", "S"] as const).map((dir) => {
-                  const slot = seats[dir];
-                  const p = slot.player;
-                  const combo = p ? latestPlayByPlayer.get(p.id) : undefined;
-                  const isLatest =
-                    combo && lastCombo && combo === lastCombo;
-
-                  return (
-                    <div
-                      key={dir}
-                      className={`played-slot played-slot-${dir.toLowerCase()} ${
-                        isLatest ? "latest-play-highlight" : ""
-                      }`}
-                    >
-                      <div className="played-slot-header">
-                        {p ? p.name : dir}:
-                      </div>
-                      {p?.status === "passed" ? (
-                        <div className="passed-label">PASSED</div>
-                      ) : combo ? (
-                        <div className="played-combo-cards">
-                          {combo.cards.map((c) => renderMiniCard(c))}
-                        </div>
-                      ) : (
-                        <div className="no-play-label">—</div>
-                      )}
-                    </div>
-                  );
-                })}
+            {/* Center Scrollable & Togglable Chat-Box */}
+            <div
+              className={`chat-box-container ${
+                isChatCollapsed ? "chat-collapsed" : ""
+              }`}
+            >
+              <div className="chat-header">
+                <span>Table Chat ({chatMessages.length})</span>
+                <button
+                  type="button"
+                  className="btn-secondary btn-small chat-toggle-btn"
+                  onClick={() => setIsChatCollapsed((prev) => !prev)}
+                >
+                  {isChatCollapsed ? "Expand ▲" : "Hide ▼"}
+                </button>
               </div>
-            )}
+              {!isChatCollapsed && (
+                <>
+                  <div className="chat-messages">
+                    {chatMessages.length === 0 ? (
+                      <div className="chat-empty">No messages yet. Say hello!</div>
+                    ) : (
+                      chatMessages.map((msg) => (
+                        <div key={msg.id} className="chat-message-item">
+                          <span className="chat-msg-sender">{msg.sender}:</span>
+                          <span>{msg.text}</span>
+                          <span className="chat-msg-time">{msg.time}</span>
+                        </div>
+                      ))
+                    )}
+                    <div ref={chatMessagesEndRef} />
+                  </div>
+                  <form className="chat-input-row" onSubmit={handleSendChat}>
+                    <input
+                      type="text"
+                      className="chat-input"
+                      placeholder="Type a message..."
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                    />
+                    <button
+                      type="submit"
+                      className="chat-send-btn"
+                      disabled={!chatInput.trim()}
+                    >
+                      Send
+                    </button>
+                  </form>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="table-east">{renderPlayerNode(seats.E)}</div>
@@ -576,8 +831,17 @@ export const GameView: React.FC<GameViewProps> = ({
         <div className="table-south">{renderPlayerNode(seats.S)}</div>
       </div>
 
-      {/* Bottom Controls + Player Hand */}
+      {/* Bottom Controls + Error Banner Right Above Hand + Player Hand */}
       <div className="bottom-hand-dock">
+        {error && (
+          <div className="hand-error-banner">
+            <span>{error}</span>
+            <button type="button" className="btn-clear" onClick={onClearError}>
+              ✕
+            </button>
+          </div>
+        )}
+
         <div className="action-bar">
           <div className="action-group-left">
             {view?.state === "WAITING" && (
@@ -718,4 +982,3 @@ export const GameView: React.FC<GameViewProps> = ({
     </div>
   );
 };
-

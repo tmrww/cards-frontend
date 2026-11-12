@@ -231,3 +231,53 @@ export function sortBombsToEnd(
   };
 }
 
+/**
+ * Checks whether a group of cards remaining in a bomb group still forms a valid bomb:
+ * - Four Jokers (4 jokers)
+ * - 4+ of a kind (all non-wildcard cards share the same value)
+ * - 5-card Straight Flush (5 cards of the same suit with consecutive values)
+ */
+export function isValidBombGroup(groupCards: Card[], currentStage: number): boolean {
+  if (groupCards.length < 4) return false;
+
+  // 1. Four Jokers bomb
+  if (groupCards.length === 4 && groupCards.every((c) => isJokerCard(c))) {
+    return true;
+  }
+
+  // No jokers allowed in standard bombs or straight flushes
+  if (groupCards.some((c) => isJokerCard(c))) return false;
+
+  // 2. 4+ of a kind bomb (all non-wildcard cards share the same value)
+  const naturals = groupCards.filter((c) => !isWildcard(c, currentStage));
+  if (
+    groupCards.length >= 4 &&
+    (naturals.length === 0 || naturals.every((c) => c.value.value === naturals[0].value.value))
+  ) {
+    return true;
+  }
+
+  // 3. 5-card Straight Flush bomb
+  if (
+    groupCards.length === 5 &&
+    naturals.length === 5 &&
+    groupCards.every((c) => c.suit.id === groupCards[0].suit.id)
+  ) {
+    const valSet = new Set(groupCards.map((c) => c.value.value));
+    if (valSet.size === 5) {
+      for (let start = 10; start >= 1; start--) {
+        const seq = [0, 1, 2, 3, 4].map((offset) => {
+          const v = start + offset;
+          return v === 14 ? 1 : v;
+        });
+        if (seq.every((v) => valSet.has(v))) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+
