@@ -58,17 +58,13 @@ export async function loadSoundConfig(): Promise<SoundConfig> {
   return configPromise;
 }
 
-export function initSounds(): Promise<SoundConfig> {
-  return loadSoundConfig();
-}
-
 function isOnCooldown(sourceId: string, now: number): boolean {
   const lastTime = lastSoundTimeBySource.get(sourceId);
   return lastTime !== undefined && now - lastTime < SOUND_COOLDOWN_MS;
 }
 
 function playAudioFile(filePath: string): void {
-  if (typeof window === "undefined" || typeof Audio === "undefined") {
+  if (typeof Audio === "undefined") {
     return;
   }
 
@@ -113,37 +109,22 @@ export function triggerTextSound(
   messageText: string,
   senderIdOrName: string
 ): boolean {
-  const trimmed = messageText.trim().toLowerCase();
-  if (!trimmed) {
+  const text = messageText.trim().toLowerCase();
+  if (!text) {
     return false;
   }
 
-  const config = cachedConfig ?? DEFAULT_SOUND_CONFIG;
-  const words = trimmed.split(/[^a-z0-9_]+/).filter(Boolean);
-  const normalizedWithUnderscores = words.join("_");
-
-  let matchedPath: string | undefined;
-
-  // 1. Direct key match: e.g. "mi_bomba" or "well_done"
-  if (config.textSounds[trimmed]) {
-    matchedPath = config.textSounds[trimmed];
-  } else if (config.textSounds[normalizedWithUnderscores]) {
-    matchedPath = config.textSounds[normalizedWithUnderscores];
-  } else {
-    // 2. Search for word or phrase match in configured keys
-    for (const [key, path] of Object.entries(config.textSounds)) {
-      const normalizedKey = key.toLowerCase();
-      const spacedKey = normalizedKey.replace(/_/g, " ");
-      if (
-        words.includes(normalizedKey) ||
-        trimmed.includes(normalizedKey) ||
-        trimmed.includes(spacedKey)
-      ) {
-        matchedPath = path;
-        break;
-      }
-    }
-  }
+  const { textSounds } = cachedConfig ?? DEFAULT_SOUND_CONFIG;
+  // Exact key ("mi_bomba"), then the message as a snake_case key ("Mi bomba!"),
+  // then the first key found anywhere in the message, as written or with spaces.
+  const underscored = text.split(/[^a-z0-9_]+/).filter(Boolean).join("_");
+  const matchedPath =
+    textSounds[text] ||
+    textSounds[underscored] ||
+    Object.entries(textSounds).find(([key]) => {
+      const k = key.toLowerCase();
+      return text.includes(k) || text.includes(k.replace(/_/g, " "));
+    })?.[1];
 
   if (!matchedPath) {
     return false;

@@ -1,18 +1,13 @@
 import React, { useState } from "react";
-import { RoomSummary } from "../types";
+import { listLobbyGames } from "../games/registry";
 
 export interface BasicLobbyViewProps {
   connected: boolean;
-  playerId: string;
   playerName: string;
   onPlayerNameChange: (name: string) => void;
-  rooms?: RoomSummary[];
   error: string | null;
-  onClearError?: () => void;
-  onCreateRoom: () => void;
+  onCreateRoom: (gameType: string) => void;
   onJoinRoom: (roomId: string) => void;
-  onRefreshRooms?: () => void;
-  onReconnect?: () => void;
 }
 
 export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
@@ -23,25 +18,22 @@ export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
   onCreateRoom,
   onJoinRoom,
 }) => {
+  const games = listLobbyGames();
   const [code, setCode] = useState("");
+  const [gameType, setGameType] = useState(games[0].id);
+
+  const hasName = playerName.trim() !== "";
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = code.trim().toUpperCase();
-    if (!trimmed || !playerName.trim()) return;
-    onJoinRoom(trimmed);
-  };
-
-  const handleHost = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (!playerName.trim()) return;
-    onCreateRoom();
+    if (trimmed && hasName) onJoinRoom(trimmed);
   };
 
   return (
     <div>
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      {!connected && <p style={{ color: "gray" }}>Connecting to server...</p>}
+      {error && <p className="lobby-error">{error}</p>}
+      {!connected && <p className="lobby-muted">Connecting to server...</p>}
 
       <form onSubmit={handleJoin}>
         <div>
@@ -68,13 +60,24 @@ export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
         </div>
 
         <div>
-          <button type="submit" disabled={!connected || !playerName.trim() || !code.trim()}>
+          <label htmlFor="game-type">Game: </label>
+          <select id="game-type" value={gameType} onChange={(e) => setGameType(e.target.value)}>
+            {games.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <button type="submit" disabled={!connected || !hasName || !code.trim()}>
             Join
           </button>
           <button
             type="button"
-            disabled={!connected || !playerName.trim()}
-            onClick={handleHost}
+            disabled={!connected || !hasName}
+            onClick={() => onCreateRoom(gameType)}
           >
             Host
           </button>
@@ -83,4 +86,3 @@ export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
     </div>
   );
 };
-

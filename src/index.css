@@ -1181,3 +1181,11 @@ button:disabled {
   padding: 1px 3px;
   border-radius: 2px;
 }
+/* Basic lobby messages (replaces inline styles) */
+.lobby-error {
+  color: red;
+}
+
+.lobby-muted {
+  color: gray;
+}

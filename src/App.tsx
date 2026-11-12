@@ -1,269 +1,102 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { BasicLobbyView } from "./components/BasicLobbyView";
-import { LobbyView } from "./components/LobbyView";
-import { GameView } from "./components/GameView";
-import {
-  ChatMessage,
-  ClientMessage,
-  GuanDanAction,
-  GuanDanPlayerView,
-  RoomSummary,
-  ServerMessage,
-} from "./types";
+import { getGameModule } from "./games/registry";
+import { useGameSocket } from "./hooks/useGameSocket";
+import type { GameAction } from "./types";
 
-function getWebSocketUrl(): string {
-  const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
+const PLAYER_ID_KEY = "cardgame_player_id";
+const PLAYER_NAME_KEY = "cardgame_player_name";
+// Keys used before the app supported multiple games; still read so sessions survive.
+const LEGACY_KEYS: Record<string, string> = {
+  [PLAYER_ID_KEY]: "guandan_player_id",
+  [PLAYER_NAME_KEY]: "guandan_player_name",
+};
 
-  // If a full WebSocket URL is explicitly specified, use it directly
-  if (env.VITE_WS_URL) {
-    return env.VITE_WS_URL;
-  }
-
-  const host = env.VITE_WS_HOST || env.VITE_HOST;
-  if (!host) {
-    throw new Error("Missing VITE_WS_HOST environment variable.");
-  }
-
-  const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";
-  const protocol = env.VITE_WS_PROTOCOL || (isHttps ? "wss:" : "ws:");
-
-  const port =
-    env.VITE_WS_PORT !== undefined
-      ? env.VITE_WS_PORT
-      : env.VITE_PORT !== undefined
-      ? env.VITE_PORT
-      : "";
-
-  // Omit port if blank, "none", or standard default ports (443 / 80)
-  if (
-    !port ||
-    port === "none" ||
-    (protocol === "wss:" && port === "443") ||
-    (protocol === "ws:" && port === "80")
-  ) {
-    return `${protocol}//${host}`;
-  }
-
-  return `${protocol}//${host}:${port}`;
+function getOrCreate(key: string, create: () => string): string {
+  const existing = sessionStorage.getItem(key) ?? sessionStorage.getItem(LEGACY_KEYS[key]);
+  const value = existing || create();
+  sessionStorage.setItem(key, value);
+  return value;
 }
 
-function getOrCreatePlayerId(): string {
-  const existing = sessionStorage.getItem("guandan_player_id");
-  if (existing) return existing;
-  const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
-  const created = `P_${randomSuffix}`;
-  sessionStorage.setItem("guandan_player_id", created);
-  return created;
-}
-
-function getInitialPlayerName(playerId: string): string {
-  const existing = sessionStorage.getItem("guandan_player_name");
-  if (existing) return existing;
-  const fallback = `Player_${playerId.slice(2)}`;
-  sessionStorage.setItem("guandan_player_name", fallback);
-  return fallback;
-}
+const randomSuffix = () => Math.random().toString(36).substring(2, 7).toUpperCase();
 
 export const App: React.FC = () => {
-  const [playerId] = useState<string>(() => getOrCreatePlayerId());
-  const [playerName, setPlayerName] = useState<string>(() =>
-    getInitialPlayerName(getOrCreatePlayerId())
+  const [playerId] = useState(() => getOrCreate(PLAYER_ID_KEY, () => `P_${randomSuffix()}`));
+  const [playerName, setPlayerName] = useState(() =>
+    getOrCreate(PLAYER_NAME_KEY, () => `Player_${playerId.slice(2)}`)
   );
+  const { connected, roomId, gameType, view, chat, error, send, dispatch } = useGameSocket();
 
-  const [connected, setConnected] = useState(false);
-  const [roomId, setRoomId] = useState<string | null>(null);
-  const [rooms, setRooms] = useState<RoomSummary[]>([]);
-  const [gameView, setGameView] = useState<GuanDanPlayerView | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const wsRef = useRef<WebSocket | null>(null);
-
-  const sendMessage = useCallback((msg: ClientMessage) => {
-    const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(msg));
-    } else {
-      setError("Not connected to WebSocket server.");
-    }
-  }, []);
-
-  const connectWebSocket = useCallback(() => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      return;
-    }
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
-
-    try {
-      const url = getWebSocketUrl();
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        setConnected(true);
-        setError(null);
-        ws.send(JSON.stringify({ type: "LIST_ROOMS" } satisfies ClientMessage));
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg: ServerMessage = JSON.parse(event.data);
-          switch (msg.type) {
-            case "ROOM_CREATED":
-            case "ROOM_JOINED":
-              setRoomId(msg.roomId);
-              setChatMessages([]);
-              setError(null);
-              break;
-
-            case "ROOM_LEFT":
-              setRoomId(null);
-              setGameView(null);
-              setChatMessages([]);
-              setError(null);
-              ws.send(JSON.stringify({ type: "LIST_ROOMS" } satisfies ClientMessage));
-              break;
-
-            case "ROOM_LIST":
-              setRooms(msg.rooms);
-              break;
-
-            case "STATE_UPDATE":
-              setRoomId(msg.roomId);
-              setGameView(msg.view);
-              break;
-
-            case "CHAT_MESSAGE":
-              setChatMessages((prev) => [
-                ...prev,
-                {
-                  id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                  sender: msg.playerName,
-                  text: msg.message,
-                },
-              ]);
-              break;
-
-            case "ERROR":
-              setError(msg.error);
-              break;
-          }
-        } catch {
-          setError("Received malformed server message.");
-        }
-      };
-
-      ws.onclose = () => {
-        setConnected(false);
-      };
-
-      ws.onerror = () => {
-        setConnected(false);
-      };
-    } catch (err: unknown) {
-      setConnected(false);
-      setError(
-        err instanceof Error
-          ? `WebSocket connection error: ${err.message}`
-          : "Failed to connect to WebSocket server."
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    connectWebSocket();
-    return () => {
-      wsRef.current?.close();
-    };
-  }, [connectWebSocket]);
+  const displayName = playerName.trim() || playerId;
+  const clearError = () => dispatch({ type: "SET_ERROR", error: null });
 
   const handlePlayerNameChange = (name: string) => {
     setPlayerName(name);
-    sessionStorage.setItem("guandan_player_name", name);
+    sessionStorage.setItem(PLAYER_NAME_KEY, name);
   };
 
-  const handleCreateRoom = () => {
-    setError(null);
-    sendMessage({
-      type: "CREATE_ROOM",
-      gameType: "guandan",
-      playerId,
-      playerName: playerName.trim() || playerId,
-    });
+  const handleCreateRoom = (type: string) => {
+    clearError();
+    send({ type: "CREATE_ROOM", gameType: type, playerId, playerName: displayName });
   };
 
   const handleJoinRoom = (targetRoomId: string) => {
-    setError(null);
-    sendMessage({
-      type: "JOIN_ROOM",
-      roomId: targetRoomId,
-      playerId,
-      playerName: playerName.trim() || playerId,
-    });
+    clearError();
+    send({ type: "JOIN_ROOM", roomId: targetRoomId, playerId, playerName: displayName });
   };
 
   const handleLeaveRoom = () => {
-    sendMessage({ type: "LEAVE_ROOM" });
-    setRoomId(null);
-    setGameView(null);
-    setChatMessages([]);
+    send({ type: "LEAVE_ROOM" });
+    dispatch({ type: "LEFT_LOCALLY" });
   };
 
-  const handleRefreshRooms = () => {
-    sendMessage({ type: "LIST_ROOMS" });
+  const handleSendAction = (action: GameAction) => {
+    clearError();
+    send({ type: "GAME_ACTION", action });
   };
 
-  const handleSendAction = (action: GuanDanAction) => {
-    setError(null);
-    sendMessage({
-      type: "GAME_ACTION",
-      action,
-    });
-  };
-
-  const handleSendMessage = (text: string) => {
-    setError(null);
-    sendMessage({
-      type: "SEND_MESSAGE",
-      roomId: roomId ?? undefined,
-      playerId,
-      playerName: playerName.trim() || playerId,
-      message: text,
-    });
+  const handleSendChat = (message: string) => {
+    clearError();
+    send({ type: "SEND_MESSAGE", roomId: roomId ?? undefined, playerId, playerName: displayName, message });
   };
 
   if (!roomId) {
     return (
       <BasicLobbyView
         connected={connected}
-        playerId={playerId}
         playerName={playerName}
         onPlayerNameChange={handlePlayerNameChange}
-        rooms={rooms}
         error={error}
-        onClearError={() => setError(null)}
         onCreateRoom={handleCreateRoom}
         onJoinRoom={handleJoinRoom}
-        onRefreshRooms={handleRefreshRooms}
-        onReconnect={connectWebSocket}
       />
     );
   }
 
+  const game = getGameModule(gameType);
+  if (!game) {
+    return (
+      <div>
+        <p className="lobby-error">Unsupported game type: {gameType ?? "unknown"}</p>
+        <button type="button" onClick={handleLeaveRoom}>
+          Leave Room
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <GameView
+    <game.View
       roomId={roomId}
       playerId={playerId}
-      view={gameView}
+      view={view}
       error={error}
-      chatMessages={chatMessages}
-      onClearError={() => setError(null)}
-      onSendAction={handleSendAction}
-      onSendMessage={handleSendMessage}
-      onLeaveRoom={handleLeaveRoom}
+      chatMessages={chat}
+      clearError={clearError}
+      sendAction={handleSendAction}
+      sendChat={handleSendChat}
+      leaveRoom={handleLeaveRoom}
     />
   );
 };
-
