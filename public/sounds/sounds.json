@@ -1,0 +1,13 @@
+{
+  "gameSounds": {
+    "your_turn": "/sounds/your_turn.wav",
+    "card_play": "/sounds/card_play.wav",
+    "pass": "/sounds/pass.wav",
+    "round_win": "/sounds/round_win.wav",
+    "round_lose": "/sounds/round_lose.mp3"
+  },
+  "textSounds": {
+    "mi_bomba": "/sounds/mi_bomba.mp3",
+    "well_done": "/sounds/well_done.wav"
+  }
+}

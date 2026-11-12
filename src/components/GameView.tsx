@@ -9,7 +9,6 @@ import {
 } from "../types";
 import {
   formatComboType,
-  formatMainRank,
   formatStageRank,
   getCardShortValue,
   getSuitSymbol,
@@ -19,6 +18,7 @@ import {
   sortBombsToEnd,
   sortCardsLowToHigh,
 } from "../utils/cards";
+import { initSounds, playGameSound, triggerTextSound } from "../utils/sound";
 
 interface GameViewProps {
   roomId: string;
@@ -77,15 +77,28 @@ export const GameView: React.FC<GameViewProps> = ({
   // Chat input and collapse state
   const [chatInput, setChatInput] = useState<string>("");
   const [isChatCollapsed, setIsChatCollapsed] = useState<boolean>(false);
+  const [isGameInfoMinimized, setIsGameInfoMinimized] = useState<boolean>(false);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
   // "Your Turn" pop-up animation state
   const [showTurnPopup, setShowTurnPopup] = useState<boolean>(false);
   const [turnPopupFast, setTurnPopupFast] = useState<boolean>(false);
+  const [turnPopupLeaving, setTurnPopupLeaving] = useState<boolean>(false);
   const prevIsMyTurnRef = useRef<boolean>(false);
   const turnPopupTimerRef = useRef<number | null>(null);
   const turnPopupStartRef = useRef<number>(0);
   const turnPopupFastRef = useRef<boolean>(false);
+  const turnPopupLeavingRef = useRef<boolean>(false);
+
+  // Sound event tracking refs
+  const prevRoundLenRef = useRef<number>(0);
+  const prevSoundStateRef = useRef<string | undefined>(undefined);
+  const prevChatCountRef = useRef<number>(0);
+
+  // Initialize sound config on mount
+  useEffect(() => {
+    void initSounds();
+  }, []);
 
   useEffect(() => {
     const updateWidth = () => {
@@ -343,31 +356,38 @@ export const GameView: React.FC<GameViewProps> = ({
     view?.state === "PLAYING" && view.players[view.turn]?.id === playerId;
   const isReady = view?.ready?.includes(playerId) ?? false;
 
-  // Trigger "Your Turn" animated pop-up when transitioning into player's turn (max 1000ms)
+  // Trigger "Your Turn" animated pop-up when transitioning into player's turn (max 5000ms)
   useEffect(() => {
     const wasMyTurn = prevIsMyTurnRef.current;
     prevIsMyTurnRef.current = isMyTurn;
 
     if (isMyTurn && !wasMyTurn) {
+      playGameSound("your_turn", playerId);
       if (turnPopupTimerRef.current !== null) {
         window.clearTimeout(turnPopupTimerRef.current);
       }
       turnPopupStartRef.current = Date.now();
       turnPopupFastRef.current = false;
+      turnPopupLeavingRef.current = false;
       setTurnPopupFast(false);
+      setTurnPopupLeaving(false);
       setShowTurnPopup(true);
       turnPopupTimerRef.current = window.setTimeout(() => {
         setShowTurnPopup(false);
+        setTurnPopupLeaving(false);
+        turnPopupLeavingRef.current = false;
         turnPopupTimerRef.current = null;
-      }, 1000);
+      }, 5000);
     } else if (!isMyTurn && showTurnPopup) {
       if (turnPopupTimerRef.current !== null) {
         window.clearTimeout(turnPopupTimerRef.current);
         turnPopupTimerRef.current = null;
       }
+      turnPopupLeavingRef.current = false;
+      setTurnPopupLeaving(false);
       setShowTurnPopup(false);
     }
-  }, [isMyTurn, showTurnPopup]);
+  }, [isMyTurn, showTurnPopup, playerId]);
 
   useEffect(() => {
     return () => {
@@ -377,33 +397,118 @@ export const GameView: React.FC<GameViewProps> = ({
     };
   }, []);
 
-  // Speed up "Your Turn" pop-up to 2x speed (500ms total / halves remaining time) on mouse movement
+  // Speed up "Your Turn" pop-up to 2x speed (2500ms total / halves remaining time) on mouse movement
   const speedUpTurnPopupOnMouseMove = () => {
-    if (!showTurnPopup || turnPopupFastRef.current) return;
+    if (!showTurnPopup || turnPopupFastRef.current || turnPopupLeavingRef.current) return;
     turnPopupFastRef.current = true;
     setTurnPopupFast(true);
 
     const elapsed = Date.now() - turnPopupStartRef.current;
-    const remainingFast = Math.min(500, Math.max(0, Math.ceil((1000 - elapsed) / 2)));
+    const remainingFast = Math.min(2500, Math.max(0, Math.ceil((5000 - elapsed) / 2)));
 
     if (turnPopupTimerRef.current !== null) {
       window.clearTimeout(turnPopupTimerRef.current);
     }
     turnPopupTimerRef.current = window.setTimeout(() => {
       setShowTurnPopup(false);
+      setTurnPopupLeaving(false);
+      turnPopupLeavingRef.current = false;
       turnPopupTimerRef.current = null;
     }, remainingFast);
+  };
+
+  // Immediately trigger the leaving animation when the user clicks anywhere on the screen
+  const dismissTurnPopupOnClick = () => {
+    if (!showTurnPopup || turnPopupLeavingRef.current) return;
+    turnPopupLeavingRef.current = true;
+    setTurnPopupLeaving(true);
+
+    if (turnPopupTimerRef.current !== null) {
+      window.clearTimeout(turnPopupTimerRef.current);
+    }
+    turnPopupTimerRef.current = window.setTimeout(() => {
+      setShowTurnPopup(false);
+      setTurnPopupLeaving(false);
+      turnPopupLeavingRef.current = false;
+      turnPopupTimerRef.current = null;
+    }, 200);
   };
 
   useEffect(() => {
     if (!showTurnPopup) return;
     const onMove = () => speedUpTurnPopupOnMouseMove();
+    const onScreenClick = () => dismissTurnPopupOnClick();
     window.addEventListener("mousemove", onMove);
-    return () => window.removeEventListener("mousemove", onMove);
+    window.addEventListener("mousedown", onScreenClick);
+    window.addEventListener("click", onScreenClick);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mousedown", onScreenClick);
+      window.removeEventListener("click", onScreenClick);
+    };
   }, [showTurnPopup]);
 
-  // Auto-scroll chat messages when a new message is added
+  // Trigger game sounds on card plays, bombs, round wins, and game end
   useEffect(() => {
+    if (!view) {
+      prevRoundLenRef.current = 0;
+      prevSoundStateRef.current = undefined;
+      return;
+    }
+
+    const prevState = prevSoundStateRef.current;
+    const currState = view.state;
+    prevSoundStateRef.current = currState;
+
+    const roundLen = view.currentRound?.length ?? 0;
+    const prevRoundLen = prevRoundLenRef.current;
+    prevRoundLenRef.current = roundLen;
+
+    if (currState === "ENDED" && prevState !== "ENDED") {
+      const firstWinnerId = view.won?.[0];
+      const winnerIdx = firstWinnerId ? view.players.findIndex((p) => p.id === firstWinnerId) : -1;
+      const winningTeam = winnerIdx !== -1 ? winnerIdx % 2 : -1;
+      const myTeam = mySeatIndex % 2;
+      if (winningTeam === myTeam) {
+        playGameSound("round_win", "game:round_win");
+      } else {
+        playGameSound("round_lose", "game:round_lose");
+      }
+      return;
+    }
+
+    if (prevState === "PLAYING" && currState === "WAITING" && (view.won?.length ?? 0) > 0) {
+      const firstWinnerId = view.won[0];
+      const winnerIdx = view.players.findIndex((p) => p.id === firstWinnerId);
+      const winningTeam = winnerIdx !== -1 ? winnerIdx % 2 : -1;
+      const myTeam = mySeatIndex % 2;
+      if (winningTeam === myTeam) {
+        playGameSound("round_win", "game:round_win");
+      } else {
+        playGameSound("round_lose", "game:round_lose");
+      }
+      return;
+    }
+
+    if (currState === "PLAYING" && roundLen > prevRoundLen && roundLen > 0) {
+      const latestPlay = view.currentRound[roundLen - 1];
+      if (latestPlay) {
+        playGameSound("card_play", latestPlay.player);
+      }
+    }
+  }, [view, mySeatIndex]);
+
+  // Auto-scroll chat messages and trigger text sound effects when a new message arrives
+  useEffect(() => {
+    if (chatMessages.length > prevChatCountRef.current) {
+      const latestMsg = chatMessages[chatMessages.length - 1];
+      if (latestMsg) {
+
+        triggerTextSound(latestMsg.text, latestMsg.sender);
+      }
+    }
+    prevChatCountRef.current = chatMessages.length;
+
     if (!isChatCollapsed) {
       chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
@@ -496,6 +601,7 @@ export const GameView: React.FC<GameViewProps> = ({
   };
 
   const handlePass = () => {
+    playGameSound("pass", playerId);
     onSendAction({ type: "PASS" });
     setSelectedCardIds(new Set());
   };
@@ -541,9 +647,14 @@ export const GameView: React.FC<GameViewProps> = ({
         {view?.state === "PLAYING" && p?.status === "passed" ? (
           <div className="passed-label">PASSED</div>
         ) : combo ? (
-          <div className="played-combo-cards">
-            {combo.cards.map((c) => renderMiniCard(c))}
-          </div>
+          <>
+            <div className="played-combo-cards">
+              {combo.cards.map((c) => renderMiniCard(c))}
+            </div>
+            <div className="played-combo-type">
+              {formatComboType(combo.type)}
+            </div>
+          </>
         ) : (
           <div className="no-play-label">—</div>
         )}
@@ -617,8 +728,12 @@ export const GameView: React.FC<GameViewProps> = ({
   };
 
   return (
-    <div className="game-screen" onMouseMove={speedUpTurnPopupOnMouseMove}>
-      {/* Non-blocking "Your Turn" Animated Pop-up (max 1s, 2x speed on mouse move) */}
+    <div
+      className="game-screen"
+      onMouseMove={speedUpTurnPopupOnMouseMove}
+      onClick={dismissTurnPopupOnClick}
+    >
+      {/* Non-blocking "Your Turn" Animated Pop-up (max 5s, 2x speed on mouse move, click screen to dismiss) */}
       {showTurnPopup && (
         <div
           className={`turn-popup-overlay ${turnPopupFast ? "turn-popup-fast" : ""
@@ -626,7 +741,7 @@ export const GameView: React.FC<GameViewProps> = ({
         >
           <div
             className={`turn-popup-badge ${turnPopupFast ? "turn-popup-fast" : ""
-              }`}
+              } ${turnPopupLeaving ? "turn-popup-leaving" : ""}`}
           >
             Your Turn!
           </div>
@@ -644,80 +759,63 @@ export const GameView: React.FC<GameViewProps> = ({
       </div>
 
       {/* Top-Right Game Information Panel */}
-      <div className="top-right-info">
-        <div className="info-title">Game Info</div>
-        <div className="info-row">
-          <span className="info-label">Status:</span>
-          <span className="info-val">
-            {view?.state ?? "CONNECTING"}
-            {view?.state === "WAITING" && ` (${view.players.length}/4 Joined)`}
-          </span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Current Stage:</span>
-          <span className="info-val highlight-stage">
-            {formatStageRank(activeStage)} (Wild: ♥{formatStageRank(activeStage)})
-          </span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Team Stages:</span>
-          <span className="info-val">
-            Us: {formatStageRank(myTeamStage)} | Them: {formatStageRank(oppTeamStage)}
-          </span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Current Turn:</span>
-          <span className="info-val">
-            {view?.state === "PLAYING"
-              ? view.players[view.turn]?.name ?? "—"
-              : "—"}
-          </span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Turn Order:</span>
-          <select
-            className="turn-order-select"
-            value={turnOrder}
-            onChange={(e) =>
-              setTurnOrder(e.target.value as "clockwise" | "counterclockwise")
-            }
+      <div
+        className={`top-right-info ${isGameInfoMinimized ? "info-minimized" : ""
+          }`}
+      >
+        <div className="info-header">
+          <span className="info-title">Game Info</span>
+          <button
+            type="button"
+            className="info-toggle-btn"
+            onClick={() => setIsGameInfoMinimized((prev) => !prev)}
+            title={isGameInfoMinimized ? "Expand Game Info" : "Minimize Game Info"}
           >
-            <option value="clockwise">Clockwise</option>
-            <option value="counterclockwise">Counterclockwise</option>
-          </select>
+            {isGameInfoMinimized ? "+" : "−"}
+          </button>
         </div>
-
-        <hr className="info-divider" />
-
-        <div className="info-subtitle">Hand to Match</div>
-        {lastCombo ? (
-          <div className="match-box">
-            <div className="info-row">
-              <span className="info-label">Type:</span>
-              <span className="info-val">{formatComboType(lastCombo.type)}</span>
-            </div>
-            <div className="info-row">
-              <span className="info-label">Rank:</span>
-              <span className="info-val">
-                {formatMainRank(lastCombo.mainRank, activeStage)}
-                {lastCombo.bombSize !== undefined && ` (Bomb ${lastCombo.bombSize})`}
-              </span>
-            </div>
-            <div className="info-row">
-              <span className="info-label">Played By:</span>
-              <span className="info-val">{getPlayerName(lastCombo.player)}</span>
-            </div>
-            <div className="match-cards-row">
-              {lastCombo.cards.map((c) => renderMiniCard(c))}
-            </div>
+        <div className="info-body">
+          <div className="info-row">
+            <span className="info-label">Status:</span>
+            <span className="info-val">
+              {view?.state ?? "CONNECTING"}
+              {view?.state === "WAITING" && ` (${view.players.length}/4 Joined)`}
+            </span>
           </div>
-        ) : (
-          <div className="match-empty">
-            {view?.state === "PLAYING"
-              ? "Free Lead — Play any combination"
-              : "No active trick"}
+          <div className="info-row">
+            <span className="info-label">Current Stage:</span>
+            <span className="info-val highlight-stage">
+              {formatStageRank(activeStage)} (Wild: ♥{formatStageRank(activeStage)})
+            </span>
           </div>
-        )}
+          <div className="info-row">
+            <span className="info-label">Team Stages:</span>
+            <span className="info-val">
+              Us: {formatStageRank(myTeamStage)} | Them: {formatStageRank(oppTeamStage)}
+            </span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Current Turn:</span>
+            <span className="info-val">
+              {view?.state === "PLAYING"
+                ? view.players[view.turn]?.name ?? "—"
+                : "—"}
+            </span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Turn Order:</span>
+            <select
+              className="turn-order-select"
+              value={turnOrder}
+              onChange={(e) =>
+                setTurnOrder(e.target.value as "clockwise" | "counterclockwise")
+              }
+            >
+              <option value="clockwise">Clockwise</option>
+              <option value="counterclockwise">Counterclockwise</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       {/* Main NESW Table Area */}

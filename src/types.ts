@@ -51,7 +51,7 @@ export interface GuanDanPlayerView {
   won: string[];
   hand: Card[];
   currentRound: GuanDanCombination[];
-  pastRounds: { winner: string; cards: GuanDanCombination[] }[];
+  // pastRounds: { winner: string; cards: GuanDanCombination[] }[];
   players: GuanDanPlayerInfo[];
   isFinished: boolean;
   winnerIds: string[];
