@@ -22,7 +22,25 @@ export const SOUND_COOLDOWN_MS = 5000;
 let cachedConfig: SoundConfig | null = null;
 let configPromise: Promise<SoundConfig> | null = null;
 let activeAudio: HTMLAudioElement | null = null;
+let gameSoundsEnabled = true;
+let chatSoundsEnabled = true;
 const lastSoundTimeBySource = new Map<string, number>();
+
+export function isGameSoundsEnabled(): boolean {
+  return gameSoundsEnabled;
+}
+
+export function setGameSoundsEnabled(enabled: boolean): void {
+  gameSoundsEnabled = enabled;
+}
+
+export function isChatSoundsEnabled(): boolean {
+  return chatSoundsEnabled;
+}
+
+export function setChatSoundsEnabled(enabled: boolean): void {
+  chatSoundsEnabled = enabled;
+}
 
 export async function loadSoundConfig(): Promise<SoundConfig> {
   if (cachedConfig) {
@@ -89,6 +107,9 @@ function playAudioFile(filePath: string): void {
 }
 
 export function playGameSound(soundKey: string, sourceId?: string): void {
+  if (!gameSoundsEnabled) {
+    return;
+  }
   const config = cachedConfig ?? DEFAULT_SOUND_CONFIG;
   const filePath = config.gameSounds[soundKey];
   if (!filePath) {
@@ -109,6 +130,9 @@ export function triggerTextSound(
   messageText: string,
   senderIdOrName: string
 ): boolean {
+  if (!chatSoundsEnabled) {
+    return false;
+  }
   const text = messageText.trim().toLowerCase();
   if (!text) {
     return false;

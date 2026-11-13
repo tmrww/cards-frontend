@@ -1015,7 +1015,7 @@ button:disabled {
   width: 100%;
   background: #ffffff;
   border-top: 1px solid #cbd5e1;
-  padding: 26px 16px 8px 16px;
+  padding: 8px 16px 8px 16px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1024,7 +1024,7 @@ button:disabled {
 
 .hand-error-banner {
   position: absolute;
-  top: 3px;
+  top: 8px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 30;
@@ -1032,6 +1032,7 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  min-height: 30px;
   background: #fee2e2;
   border: 1px solid #ef4444;
   color: #991b1b;
@@ -1188,4 +1189,267 @@ button:disabled {
 
 .lobby-muted {
   color: gray;
+}
+
+.sound-toggles-bar {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sound-toggle-off {
+  opacity: 0.6;
+}
+
+/* ==================== SPEED GAME ==================== */
+.speed-play-area {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.table-center:has(.speed-center) {
+  max-width: none;
+}
+
+.speed-center {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.speed-waiting-box {
+  max-width: 320px;
+}
+
+.speed-winner-banner {
+  max-width: 320px;
+  background: #fefce8;
+  border-color: #eab308;
+  color: #854d0e;
+}
+
+.speed-seat-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.speed-deck {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.speed-deck-card {
+  width: 54px;
+  height: 78px;
+  border-radius: 6px;
+  border: 2px solid #cbd5e1;
+  background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 50%, #1e40af 100%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.speed-deck-count {
+  font-size: 15px;
+  font-weight: 800;
+  color: #ffffff;
+  background: rgba(15, 23, 42, 0.55);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.speed-deck-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.speed-piles-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: nowrap;
+}
+
+.speed-pile {
+  width: 76px;
+  height: 106px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.speed-stuck-pile {
+  background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+  border: 2px solid #94a3b8;
+  color: #f8fafc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+.speed-stuck-pile--empty {
+  opacity: 0.45;
+  border-style: dashed;
+  background: #e2e8f0;
+  color: #64748b;
+  box-shadow: none;
+}
+
+.speed-pile-count {
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.speed-pile-label {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.speed-discard-pile {
+  padding: 4px;
+  background: #f8fafc;
+  border: 2px solid #cbd5e1;
+  cursor: pointer;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease, background-color 0.14s ease;
+}
+
+.speed-discard-pile:hover:not(:disabled) {
+  border-color: #60a5fa;
+  background: #eff6ff;
+}
+
+.speed-discard-pile--selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35), 0 6px 14px rgba(37, 99, 235, 0.22);
+  transform: translateY(-2px);
+}
+
+.speed-discard-pile--selected:hover:not(:disabled) {
+  border-color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.speed-discard-pile--empty {
+  border-style: dashed;
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.speed-discard-pile .hand-card {
+  margin-left: 0;
+  pointer-events: none;
+  cursor: pointer;
+}
+
+.speed-discard-pile .hand-card:hover {
+  transform: none;
+  box-shadow: -1px 1px 3px rgba(0, 0, 0, 0.12);
+  border-color: #94a3b8;
+}
+
+.speed-action-bar {
+  flex-wrap: wrap;
+}
+
+.speed-pile-hint {
+  font-size: 12px;
+  font-weight: 600;
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.speed-hand-area {
+  min-height: 114px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 20px 4px 20px;
+}
+
+.speed-card-wrapper {
+  position: relative;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  transition: transform 0.14s ease-out, opacity 0.14s ease-out;
+}
+
+.speed-card-wrapper .hand-card {
+  margin-left: 0;
+}
+
+.speed-card-wrapper--dragging {
+  transition: none;
+  z-index: 60;
+  cursor: grabbing;
+  opacity: 0.88;
+}
+
+.speed-card-wrapper--dragging .hand-card {
+  border-color: #2563eb;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
+}
+
+.speed-card-wrapper--dragging .hand-card:hover {
+  transform: none;
+}
+
+.speed-card-key-badge {
+  font-size: 10px;
+  font-weight: 700;
+  background: #e2e8f0;
+  color: #334155;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+@media (max-width: 640px) {
+  .speed-piles-row {
+    gap: 8px;
+  }
+
+  .speed-pile {
+    width: 64px;
+    height: 92px;
+  }
+
+  .speed-deck-card {
+    width: 46px;
+    height: 66px;
+  }
+
+  .speed-hand-area {
+    gap: 6px;
+    padding: 10px 8px 4px 8px;
+  }
 }

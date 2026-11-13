@@ -22,8 +22,8 @@ describe("game registry", () => {
   });
 
   it("hides dev-only games from the lobby unless requested, with guandan first", () => {
-    expect(listLobbyGames(false).map((m) => m.id)).toEqual(["guandan"]);
-    expect(listLobbyGames(true).map((m) => m.id)).toEqual(["guandan", "placeholder"]);
+    expect(listLobbyGames(false).map((m) => m.id)).toEqual(["guandan", "speed"]);
+    expect(listLobbyGames(true).map((m) => m.id)).toEqual(["guandan", "speed", "placeholder"]);
   });
 });
 

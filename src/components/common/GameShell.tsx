@@ -1,7 +1,14 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useTurnPopup } from "../../hooks/useTurnPopup";
 import type { ChatMessage } from "../../types";
-import { loadSoundConfig, playGameSound } from "../../utils/sound";
+import {
+  isChatSoundsEnabled,
+  isGameSoundsEnabled,
+  loadSoundConfig,
+  playGameSound,
+  setChatSoundsEnabled,
+  setGameSoundsEnabled,
+} from "../../utils/sound";
 import { ChatPanel } from "./ChatPanel";
 import { ErrorBanner } from "./ErrorBanner";
 import { TurnBanner } from "./TurnBanner";
@@ -41,6 +48,21 @@ export const GameShell: React.FC<GameShellProps> = ({
     void loadSoundConfig();
   }, []);
 
+  const [gameSoundsOn, setGameSoundsOn] = useState(isGameSoundsEnabled);
+  const [chatSoundsOn, setChatSoundsOn] = useState(isChatSoundsEnabled);
+
+  const toggleGameSounds = () => {
+    const next = !gameSoundsOn;
+    setGameSoundsEnabled(next);
+    setGameSoundsOn(next);
+  };
+
+  const toggleChatSounds = () => {
+    const next = !chatSoundsOn;
+    setChatSoundsEnabled(next);
+    setChatSoundsOn(next);
+  };
+
   const popup = useTurnPopup(isMyTurn, () => playGameSound("your_turn", playerId));
 
   return (
@@ -60,6 +82,24 @@ export const GameShell: React.FC<GameShellProps> = ({
 
       <div className="table-area">
         {table}
+        <div className="sound-toggles-bar">
+          <button
+            type="button"
+            className={`btn-secondary btn-small ${gameSoundsOn ? "" : "sound-toggle-off"}`}
+            aria-pressed={gameSoundsOn}
+            onClick={toggleGameSounds}
+          >
+            Game Sounds: {gameSoundsOn ? "On" : "Off"}
+          </button>
+          <button
+            type="button"
+            className={`btn-secondary btn-small ${chatSoundsOn ? "" : "sound-toggle-off"}`}
+            aria-pressed={chatSoundsOn}
+            onClick={toggleChatSounds}
+          >
+            Chat Sounds: {chatSoundsOn ? "On" : "Off"}
+          </button>
+        </div>
         <ChatPanel messages={chatMessages} onSend={onSendChat} />
       </div>
 

@@ -122,4 +122,23 @@ describe("App", () => {
     expect(socket().sent.at(-1)).toMatchObject({ playerId: "P_OLD01" });
     expect(sessionStorage.getItem("cardgame_player_id")).toBe("P_OLD01");
   });
+
+  it("toggles game sounds and chat sounds from the bottom-left bar", () => {
+    render(<App />);
+    open();
+    receive({ type: "ROOM_JOINED", roomId: "ABCDE", gameType: "guandan" });
+    receive({ type: "STATE_UPDATE", roomId: "ABCDE", view: makeView() });
+
+    const gameBtn = screen.getByRole("button", { name: /Game Sounds:/ });
+    const chatBtn = screen.getByRole("button", { name: /Chat Sounds:/ });
+    expect(gameBtn).toHaveTextContent("Game Sounds: On");
+    expect(chatBtn).toHaveTextContent("Chat Sounds: On");
+
+    fireEvent.click(gameBtn);
+    fireEvent.click(chatBtn);
+    expect(gameBtn).toHaveTextContent("Game Sounds: Off");
+    expect(chatBtn).toHaveTextContent("Chat Sounds: Off");
+    expect(gameBtn).toHaveAttribute("aria-pressed", "false");
+    expect(chatBtn).toHaveAttribute("aria-pressed", "false");
+  });
 });

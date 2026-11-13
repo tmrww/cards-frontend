@@ -94,5 +94,20 @@ describe("playGameSound", () => {
       "/sounds/round_win.wav",
     ]);
   });
+
+  it("respects game and chat sound toggles independently", async () => {
+    const { playGameSound, triggerTextSound, setGameSoundsEnabled, setChatSoundsEnabled } =
+      await loadSound();
+    setGameSoundsEnabled(false);
+    playGameSound("card_play", "p1");
+    expect(triggerTextSound("mi_bomba", "ann")).toBe(true);
+    expect(played).toEqual(["/sounds/mi_bomba.mp3"]);
+
+    setGameSoundsEnabled(true);
+    setChatSoundsEnabled(false);
+    expect(triggerTextSound("well_done", "bob")).toBe(false);
+    playGameSound("pass", "p2");
+    expect(played).toEqual(["/sounds/mi_bomba.mp3", "/sounds/pass.wav"]);
+  });
 });
 

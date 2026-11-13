@@ -67,5 +67,28 @@ describe("BasicLobbyView", () => {
     fireEvent.change(screen.getByLabelText(/Username/), { target: { value: "Bo" } });
     expect(onPlayerNameChange).toHaveBeenCalledWith("Bo");
   });
+
+  it("pre-fills the room code from the ?code= URL parameter", () => {
+    const prev = window.location.search;
+    window.history.replaceState(null, "", "/?code=ab12c9");
+    try {
+      const { onJoinRoom } = setup();
+      expect(screen.getByLabelText(/Code/)).toHaveValue("AB12C");
+      expect(screen.getByText("Join")).toBeEnabled();
+      fireEvent.click(screen.getByText("Join"));
+      expect(onJoinRoom).toHaveBeenCalledWith("AB12C");
+    } finally {
+      window.history.replaceState(null, "", prev || "/");
+    }
+  });
+
+  it("hides the game dropdown when text is entered in the code box", () => {
+    setup();
+    expect(screen.getByLabelText(/Game/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Code/), { target: { value: "AB12" } });
+    expect(screen.queryByLabelText(/Game/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Code/), { target: { value: "   " } });
+    expect(screen.getByLabelText(/Game/)).toBeInTheDocument();
+  });
 });
 

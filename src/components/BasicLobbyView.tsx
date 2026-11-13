@@ -10,6 +10,12 @@ export interface BasicLobbyViewProps {
   onJoinRoom: (roomId: string) => void;
 }
 
+function getInitialCode(): string {
+  if (typeof window === "undefined") return "";
+  const param = new URLSearchParams(window.location.search).get("code");
+  return param ? param.trim().toUpperCase().slice(0, 5) : "";
+}
+
 export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
   connected,
   playerName,
@@ -19,7 +25,7 @@ export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
   onJoinRoom,
 }) => {
   const games = listLobbyGames();
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(getInitialCode);
   const [gameType, setGameType] = useState(games[0].id);
 
   const hasName = playerName.trim() !== "";
@@ -59,16 +65,18 @@ export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
           />
         </div>
 
-        <div>
-          <label htmlFor="game-type">Game: </label>
-          <select id="game-type" value={gameType} onChange={(e) => setGameType(e.target.value)}>
-            {games.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        {!code.trim() && (
+          <div>
+            <label htmlFor="game-type">Game: </label>
+            <select id="game-type" value={gameType} onChange={(e) => setGameType(e.target.value)}>
+              {games.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div>
           <button type="submit" disabled={!connected || !hasName || !code.trim()}>

@@ -1,5 +1,6 @@
 import { guandanModule } from "./guandan/GuanDanView";
 import { placeholderModule } from "./placeholder/PlaceholderView";
+import { speedModule } from "./speed/SpeedView";
 import type { GameModule } from "./types";
 
 // Each game narrows its own view/action types; the registry only needs the shell contract.
@@ -7,7 +8,7 @@ import type { GameModule } from "./types";
 export type AnyGameModule = GameModule<any, any>;
 
 /** Register new games here. The first entry is the lobby default. */
-export const GAME_MODULES: AnyGameModule[] = [guandanModule, placeholderModule];
+export const GAME_MODULES: AnyGameModule[] = [guandanModule, speedModule, placeholderModule];
 
 export const getGameModule = (id: string | null): AnyGameModule | undefined =>
   GAME_MODULES.find((m) => m.id === id);

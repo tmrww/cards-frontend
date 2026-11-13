@@ -14,7 +14,7 @@ npx vitest run -t "wildcard"  # tests whose name matches
 - Suit ids in tests: 0 ♠, 1 ♥, 2 ♦, 3 ♣, -1 small joker, -2 big joker. Value 1 is the Ace.
 - **Every new test must be added to this file in the same change** (and to the changelog at the bottom).
 
-Total: 15 files, 142 tests.
+Total: 16 files, 153 tests.
 
 ---
 
@@ -53,6 +53,7 @@ Uses a fake `Audio`, fake timers and a fresh module per test (cooldown state is 
 | applies a per-sender cooldown | same sender twice, other sender, after 5s | false, true, true |
 | plays a configured sound and ignores unknown keys | `playGameSound` | only known key plays |
 | applies a cooldown per source and defaults the source to the sound key | same source repeated | second call per source suppressed |
+| respects game and chat sound toggles independently | `setGameSoundsEnabled` / `setChatSoundsEnabled` | disabled category is skipped while the other still plays |
 
 ## `src/games/registry.test.ts` (4)
 | Test | Purpose | Expected |
@@ -60,7 +61,7 @@ Uses a fake `Audio`, fake timers and a fresh module per test (cooldown state is 
 | has unique ids, labels and a View for every module | registry integrity | no duplicates, all complete |
 | registers guandan and the dev-only placeholder | expected modules | guandan not dev-only; placeholder dev-only |
 | returns undefined for unknown or missing ids | lookup misses | `undefined` |
-| hides dev-only games from the lobby unless requested, with guandan first | dropdown source | `[guandan]` / `[guandan, placeholder]` |
+| hides dev-only games from the lobby unless requested, with guandan first | dropdown source | `[guandan, speed]` / `[guandan, speed, placeholder]` |
 
 ## `src/games/guandan/rules.test.ts` (25)
 | Test | Purpose | Expected |
@@ -187,7 +188,7 @@ Uses a fake `Audio`, fake timers and a fresh module per test (cooldown state is 
 | TableLayout renders each edge and the center | layout | content in the right regions |
 | TableLayout leaves unused edges empty | layout | W and E empty |
 
-## `src/components/BasicLobbyView.test.tsx` (8)
+## `src/components/BasicLobbyView.test.tsx` (10)
 | Test | Purpose | Expected |
 | :--- | :--- | :--- |
 | lists registry games, defaulting to the first | dropdown | "Guan Dan" first, value `guandan` |
@@ -198,6 +199,8 @@ Uses a fake `Audio`, fake timers and a fresh module per test (cooldown state is 
 | disables Join until a code is entered | validation | Join disabled, Host enabled |
 | shows connection status and errors | status | message, `lobby-error`, Host disabled |
 | reports username edits | name input | `onPlayerNameChange("Bo")` |
+| pre-fills the room code from the `?code=` URL parameter | URL query `?code=ab12c9` | Code input `AB12C`, Join enabled and submits `AB12C` |
+| hides the game dropdown when text is entered in the code box | code input visibility | Game dropdown hidden for `"AB12"`, shown again for whitespace |
 
 ## `src/App.test.tsx` (9)
 Uses a fake `WebSocket` and `VITE_WS_URL=ws://test`.
@@ -213,9 +216,27 @@ Uses a fake `WebSocket` and `VITE_WS_URL=ws://test`.
 | sends chat messages with the room and player | chat | `SEND_MESSAGE` with room and text |
 | shows server errors in the lobby | errors | text shown |
 | keeps the player id using the legacy storage key | session migration | id `P_OLD01` reused and copied to the new key |
+| toggles game sounds and chat sounds from the bottom-left bar | sound toggles | `Game Sounds: On`/`Off` and `Chat Sounds: On`/`Off` update text and `aria-pressed` |
+
+## `src/games/speed/SpeedView.test.tsx` (12)
+| Test | Purpose | Expected |
+| :--- | :--- | :--- |
+| places opponent at N, you at S, decks on left/right, 4 center piles, and 5-card hand | setup rendering | N/S seats, `my-deck` left, `opponent-deck` right, 2 face-down stuck piles, 2 face-up discard piles, 5 hand cards |
+| starts with no pile selected and persists click selection | discard pile selection | `aria-pressed="false"` initially; click selects and persists across actions |
+| selects pile 0 with ArrowLeft and pile 1 with ArrowRight | keyboard pile selection | `ArrowLeft` → pile 0, `ArrowRight` → pile 1 |
+| does not send PLAY on double-click, drag-out, or 1-5 keys when no pile is selected | card play guard | `sendAction` not called |
+| plays `{ type: 'PLAY', payload: { cardId, pile } }` to the selected pile | double-click play | `PLAY` sent with card id and selected pile |
+| does not play when dragged less than half out of hand area, and plays when >= half out | drag-out play | `< 50%` out ignored; `>= 50%` out sends `PLAY` |
+| plays 1st..5th card to selected pile and ignores keys beyond hand length | number keys 1-5 | `1`/`3` play cards 0/2; `4`/`5` ignored on 3-card hand |
+| sends DRAW on Spacebar and Draw button, and UNSTUCK on Unstuck button | draw & unstuck | `DRAW` and `UNSTUCK` sent |
+| sends DRAW when clicking/tapping the play area or deck, but not when clicking a discard pile | tap play area draw | discard pile click selects only; `speed-play-area` & `my-deck` click send `DRAW` |
+| sends READY when Ready Up button is clicked in waiting state | ready up | `READY` sent |
+| ignores 1-5, Space, ArrowLeft, and ArrowRight when focus is in an input | keyboard guard | no pile selection or actions when chat input focused |
+| shows winner banner with (You!) when viewer wins, and opponent name when opponent wins | winner display | `speed-winner-banner` shows winner and `(You!)` only for self |
 
 ---
 
 ## Changelog
 - Initial suite (Phase 0-5): all 142 tests above.
+- Added `src/games/speed/SpeedView.test.tsx` (11 tests) for Speed game UI.
 
