@@ -90,5 +90,15 @@ describe("BasicLobbyView", () => {
     fireEvent.change(screen.getByLabelText(/Code/), { target: { value: "   " } });
     expect(screen.getByLabelText(/Game/)).toBeInTheDocument();
   });
+
+  it("renders inside .lobby-screen and .lobby-card containers", () => {
+    setup();
+    const screenEl = document.querySelector(".lobby-screen");
+    const cardEl = document.querySelector(".lobby-card");
+    expect(screenEl).toBeInTheDocument();
+    expect(cardEl).toBeInTheDocument();
+    expect(screenEl).toContainElement(cardEl as HTMLElement);
+    expect(screen.getByRole("heading", { name: "Card Games" })).toHaveClass("lobby-title");
+  });
 });
 

@@ -37,60 +37,63 @@ export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
   };
 
   return (
-    <div>
-      {error && <p className="lobby-error">{error}</p>}
-      {!connected && <p className="lobby-muted">Connecting to server...</p>}
+    <div className="lobby-screen">
+      <div className="lobby-card">
+        <h2 className="lobby-title">Card Games</h2>
+        {error && <p className="lobby-error">{error}</p>}
+        {!connected && <p className="lobby-muted">Connecting to server...</p>}
 
-      <form onSubmit={handleJoin}>
-        <div>
-          <label htmlFor="username">Username: </label>
-          <input
-            id="username"
-            type="text"
-            value={playerName}
-            onChange={(e) => onPlayerNameChange(e.target.value)}
-            placeholder="Username"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="room-code">Code: </label>
-          <input
-            id="room-code"
-            type="text"
-            value={code}
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
-            placeholder="Code"
-            maxLength={5}
-          />
-        </div>
-
-        {!code.trim() && (
+        <form onSubmit={handleJoin}>
           <div>
-            <label htmlFor="game-type">Game: </label>
-            <select id="game-type" value={gameType} onChange={(e) => setGameType(e.target.value)}>
-              {games.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.label}
-                </option>
-              ))}
-            </select>
+            <label htmlFor="username">Username: </label>
+            <input
+              id="username"
+              type="text"
+              value={playerName}
+              onChange={(e) => onPlayerNameChange(e.target.value)}
+              placeholder="Username"
+            />
           </div>
-        )}
 
-        <div>
-          <button type="submit" disabled={!connected || !hasName || !code.trim()}>
-            Join
-          </button>
-          <button
-            type="button"
-            disabled={!connected || !hasName}
-            onClick={() => onCreateRoom(gameType)}
-          >
-            Host
-          </button>
-        </div>
-      </form>
+          <div>
+            <label htmlFor="room-code">Code: </label>
+            <input
+              id="room-code"
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              placeholder="Code"
+              maxLength={5}
+            />
+          </div>
+
+          {!code.trim() && (
+            <div>
+              <label htmlFor="game-type">Game: </label>
+              <select id="game-type" value={gameType} onChange={(e) => setGameType(e.target.value)}>
+                {games.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <button type="submit" disabled={!connected || !hasName || !code.trim()}>
+              Join
+            </button>
+            <button
+              type="button"
+              disabled={!connected || !hasName}
+              onClick={() => onCreateRoom(gameType)}
+            >
+              Host
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };

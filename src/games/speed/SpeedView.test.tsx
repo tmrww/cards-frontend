@@ -23,8 +23,8 @@ const makeSpeedView = (overrides: Partial<SpeedPlayerView> = {}): SpeedPlayerVie
     card("h5", 0, 1),
   ],
   players: [
-    { id: "p0", name: "Alice", deckSize: 15 },
-    { id: "p1", name: "Bob", deckSize: 14 },
+    { id: "p0", name: "Alice", handSize: 5, deckSize: 15 },
+    { id: "p1", name: "Bob", handSize: 5, deckSize: 14 },
   ],
   topCards: [card("t0", 1, 4), card("t1", 3, 9)],
   stuckPiles: [5, 5],
@@ -204,6 +204,41 @@ describe("SpeedView", () => {
         payload: { cardId: "h1", pile: 0 },
       });
     });
+
+    it("reorders cards in hand when dragged within the hand area without playing", () => {
+      const { sendAction } = renderSpeed();
+      fireEvent.click(screen.getByTestId("discard-pile-0"));
+
+      const handArea = screen.getByTestId("speed-hand-area");
+      vi.spyOn(handArea, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 400, 500, 120));
+
+      for (let i = 0; i < 5; i++) {
+        const el = screen.getByTestId(`speed-card-${i}`);
+        vi.spyOn(el, "getBoundingClientRect").mockReturnValue(
+          new DOMRect(20 + i * 70, 410, 62, 90)
+        );
+      }
+
+      const card0 = screen.getByTestId("speed-card-0");
+      expect(card0).toHaveTextContent("2");
+
+      // Drag card 0 (center x=51) right past card 2's center (x=191) while staying inside handArea
+      fireEvent.pointerDown(card0, { button: 0, clientX: 51, clientY: 450 });
+      fireEvent.pointerMove(window, { clientX: 200, clientY: 450 });
+      fireEvent.pointerUp(window, { clientX: 200, clientY: 450 });
+
+      expect(sendAction).not.toHaveBeenCalled();
+      expect(screen.getByTestId("speed-card-0")).toHaveTextContent("5");
+      expect(screen.getByTestId("speed-card-1")).toHaveTextContent("8");
+      expect(screen.getByTestId("speed-card-2")).toHaveTextContent("2");
+
+      // Pressing "3" now plays the moved card h1
+      fireEvent.keyDown(window, { key: "3" });
+      expect(sendAction).toHaveBeenCalledWith({
+        type: "PLAY",
+        payload: { cardId: "h1", pile: 0 },
+      });
+    });
   });
 
   describe("number keys 1-5", () => {
@@ -263,6 +298,31 @@ describe("SpeedView", () => {
       fireEvent.click(readyBtn);
       expect(sendAction).toHaveBeenCalledWith({ type: "READY" });
     });
+
+    it("highlights the clicked stuck pile or left pile on Unstuck button and shows Unstuck Requested", () => {
+      const { sendAction: send1, unmount: unmount1 } = renderSpeed();
+      fireEvent.click(screen.getByTestId("stuck-pile-1"));
+      expect(send1).toHaveBeenCalledWith({ type: "UNSTUCK" });
+      expect(screen.getByTestId("speed-unstuck-btn")).toHaveTextContent("Unstuck Requested");
+      expect(screen.getByTestId("stuck-pile-1")).toHaveClass("speed-stuck-pile--requested");
+      expect(screen.getByTestId("stuck-pile-0")).not.toHaveClass("speed-stuck-pile--requested");
+      unmount1();
+
+      const { sendAction: send0, unmount: unmount0 } = renderSpeed();
+      fireEvent.click(screen.getByTestId("stuck-pile-0"));
+      expect(send0).toHaveBeenCalledWith({ type: "UNSTUCK" });
+      expect(screen.getByTestId("speed-unstuck-btn")).toHaveTextContent("Unstuck Requested");
+      expect(screen.getByTestId("stuck-pile-0")).toHaveClass("speed-stuck-pile--requested");
+      expect(screen.getByTestId("stuck-pile-1")).not.toHaveClass("speed-stuck-pile--requested");
+      unmount0();
+
+      const { sendAction: sendBtn } = renderSpeed();
+      fireEvent.click(screen.getByTestId("speed-unstuck-btn"));
+      expect(sendBtn).toHaveBeenCalledWith({ type: "UNSTUCK" });
+      expect(screen.getByTestId("speed-unstuck-btn")).toHaveTextContent("Unstuck Requested");
+      expect(screen.getByTestId("stuck-pile-0")).toHaveClass("speed-stuck-pile--requested");
+      expect(screen.getByTestId("stuck-pile-1")).not.toHaveClass("speed-stuck-pile--requested");
+    });
   });
 
   describe("keyboard guard", () => {
@@ -280,6 +340,36 @@ describe("SpeedView", () => {
       expect(screen.getByTestId("discard-pile-0")).toHaveAttribute("aria-pressed", "false");
       expect(screen.getByTestId("discard-pile-1")).toHaveAttribute("aria-pressed", "false");
       expect(sendAction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("countdown state", () => {
+    it("renders speed-countdown-banner for START and displays starting hand before PLAYING", () => {
+      renderSpeed({
+        state: "COUNTDOWN",
+        countdownKind: "START",
+        countdownEndsAt: Date.now() + 2500,
+        topCards: [],
+      });
+
+      const banner = screen.getByTestId("speed-countdown-banner");
+      expect(banner).toHaveTextContent(/Game starting in \d+\.\.\./);
+      for (let i = 0; i < 5; i++) {
+        expect(screen.getByTestId(`speed-card-${i}`)).toBeInTheDocument();
+      }
+      expect(screen.queryByTestId("speed-ready-btn")).toBeNull();
+      expect(screen.queryByTestId("speed-draw-btn")).toBeNull();
+    });
+
+    it("renders speed-countdown-banner for UNSTUCK", () => {
+      renderSpeed({
+        state: "COUNTDOWN",
+        countdownKind: "UNSTUCK",
+        countdownEndsAt: Date.now() + 2500,
+      });
+
+      const banner = screen.getByTestId("speed-countdown-banner");
+      expect(banner).toHaveTextContent(/Unstucking in \d+\.\.\./);
     });
   });
 

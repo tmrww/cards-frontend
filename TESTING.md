@@ -14,7 +14,7 @@ npx vitest run -t "wildcard"  # tests whose name matches
 - Suit ids in tests: 0 ♠, 1 ♥, 2 ♦, 3 ♣, -1 small joker, -2 big joker. Value 1 is the Ace.
 - **Every new test must be added to this file in the same change** (and to the changelog at the bottom).
 
-Total: 16 files, 153 tests.
+Total: 16 files, 161 tests.
 
 ---
 
@@ -40,7 +40,7 @@ Total: 16 files, 153 tests.
 | omits the port for wss 443, ws 80, "none", "" (4 cases) | default/blank ports dropped | `proto//h` |
 | keeps a default port of the other protocol | `ws:` + 443 | `ws://h:443` |
 
-## `src/utils/sound.test.ts` (8)
+## `src/utils/sound.test.ts` (9)
 Uses a fake `Audio`, fake timers and a fresh module per test (cooldown state is module-level).
 
 | Test | Purpose | Expected |
@@ -52,7 +52,7 @@ Uses a fake `Audio`, fake timers and a fresh module per test (cooldown state is 
 | ignores blank and unmatched messages | "   ", "hello there" | false, nothing plays |
 | applies a per-sender cooldown | same sender twice, other sender, after 5s | false, true, true |
 | plays a configured sound and ignores unknown keys | `playGameSound` | only known key plays |
-| applies a cooldown per source and defaults the source to the sound key | same source repeated | second call per source suppressed |
+| has no cooldown and plays repeatedly within 5000ms | `playGameSound` repeated calls | every call plays without cooldown |
 | respects game and chat sound toggles independently | `setGameSoundsEnabled` / `setChatSoundsEnabled` | disabled category is skipped while the other still plays |
 
 ## `src/games/registry.test.ts` (4)
@@ -188,7 +188,7 @@ Uses a fake `Audio`, fake timers and a fresh module per test (cooldown state is 
 | TableLayout renders each edge and the center | layout | content in the right regions |
 | TableLayout leaves unused edges empty | layout | W and E empty |
 
-## `src/components/BasicLobbyView.test.tsx` (10)
+## `src/components/BasicLobbyView.test.tsx` (11)
 | Test | Purpose | Expected |
 | :--- | :--- | :--- |
 | lists registry games, defaulting to the first | dropdown | "Guan Dan" first, value `guandan` |
@@ -201,6 +201,7 @@ Uses a fake `Audio`, fake timers and a fresh module per test (cooldown state is 
 | reports username edits | name input | `onPlayerNameChange("Bo")` |
 | pre-fills the room code from the `?code=` URL parameter | URL query `?code=ab12c9` | Code input `AB12C`, Join enabled and submits `AB12C` |
 | hides the game dropdown when text is entered in the code box | code input visibility | Game dropdown hidden for `"AB12"`, shown again for whitespace |
+| renders inside .lobby-screen and .lobby-card containers | lobby layout | `.lobby-screen` contains `.lobby-card` and `.lobby-title` |
 
 ## `src/App.test.tsx` (9)
 Uses a fake `WebSocket` and `VITE_WS_URL=ws://test`.
@@ -218,7 +219,7 @@ Uses a fake `WebSocket` and `VITE_WS_URL=ws://test`.
 | keeps the player id using the legacy storage key | session migration | id `P_OLD01` reused and copied to the new key |
 | toggles game sounds and chat sounds from the bottom-left bar | sound toggles | `Game Sounds: On`/`Off` and `Chat Sounds: On`/`Off` update text and `aria-pressed` |
 
-## `src/games/speed/SpeedView.test.tsx` (13)
+## `src/games/speed/SpeedView.test.tsx` (17)
 | Test | Purpose | Expected |
 | :--- | :--- | :--- |
 | places opponent at N, you at S, decks on left/right, 4 center piles, and 5-card hand | setup rendering | N/S seats, `my-deck` left, `opponent-deck` right, 2 face-down stuck piles, 2 face-up discard piles, 5 hand cards |
@@ -227,11 +228,15 @@ Uses a fake `WebSocket` and `VITE_WS_URL=ws://test`.
 | does not send PLAY on double-click, drag-out, or 1-5 keys when no pile is selected | card play guard | `sendAction` not called |
 | plays `{ type: 'PLAY', payload: { cardId, pile } }` to the selected pile | double-click play | `PLAY` sent with card id and selected pile |
 | does not play when dragged less than half out of hand area, and plays when >= half out | drag-out play | `< 50%` out ignored; `>= 50%` out sends `PLAY` |
+| reorders cards in hand when dragged within the hand area without playing | hand drag reorder | reorders cards in DOM without sending `PLAY`; number key plays moved card |
 | plays 1st..5th card to selected pile and ignores keys beyond hand length | number keys 1-5 | `1`/`3` play cards 0/2; `4`/`5` ignored on 3-card hand |
 | sends DRAW on Spacebar and Draw button, and UNSTUCK on Unstuck button | draw & unstuck | `DRAW` and `UNSTUCK` sent |
 | sends DRAW when clicking/tapping the play area or deck, but not when clicking a discard pile | tap play area draw | discard pile click selects only; `speed-play-area` & `my-deck` click send `DRAW` |
 | sends READY when Ready Up button is clicked in waiting state | ready up | `READY` sent |
+| highlights the clicked stuck pile or left pile on Unstuck button and shows Unstuck Requested | stuck pile unstuck | `UNSTUCK` sent, `"Unstuck Requested"` shown, `.speed-stuck-pile--requested` added to clicked pile (or `stuck-pile-0` for button) |
 | ignores 1-5, Space, ArrowLeft, and ArrowRight when focus is in an input | keyboard guard | no pile selection or actions when chat input focused |
+| renders speed-countdown-banner for START and displays starting hand before PLAYING | start countdown | `speed-countdown-banner` shows `Game starting in ...` and 5 starting hand cards |
+| renders speed-countdown-banner for UNSTUCK | unstuck countdown | `speed-countdown-banner` shows `Unstucking in ...` |
 | shows winner banner with (You!) when viewer wins, and opponent name when opponent wins | winner display | `speed-winner-banner` shows winner and `(You!)` only for self |
 | copies the invite link with `?code=` when clicking the room code | room invite copy | `navigator.clipboard.writeText` called with `/?code=ROOM1` and shows `Copied!` |
 
@@ -240,4 +245,5 @@ Uses a fake `WebSocket` and `VITE_WS_URL=ws://test`.
 ## Changelog
 - Initial suite (Phase 0-5): all 142 tests above.
 - Added `src/games/speed/SpeedView.test.tsx` (11 tests) for Speed game UI.
+- Updated `src/utils/sound.test.ts` (no cooldown on `playGameSound`), `src/components/BasicLobbyView.test.tsx` (11 tests), and `src/games/speed/SpeedView.test.tsx` (17 tests: hand reorder, stuck pile unstuck highlight, and `COUNTDOWN` state).
 

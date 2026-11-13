@@ -81,9 +81,11 @@ describe("playGameSound", () => {
     expect(played).toEqual(["/sounds/card_play.wav"]);
   });
 
-  it("applies a cooldown per source and defaults the source to the sound key", async () => {
-    const { playGameSound } = await loadSound();
+  it("has no cooldown and plays repeatedly within 5000ms", async () => {
+    const { playGameSound, SOUND_COOLDOWN_MS } = await loadSound();
+    expect(SOUND_COOLDOWN_MS).toBe(5000);
     playGameSound("pass", "p1");
+    vi.advanceTimersByTime(100);
     playGameSound("pass", "p1");
     playGameSound("pass", "p2");
     playGameSound("round_win");
@@ -91,6 +93,8 @@ describe("playGameSound", () => {
     expect(played).toEqual([
       "/sounds/pass.wav",
       "/sounds/pass.wav",
+      "/sounds/pass.wav",
+      "/sounds/round_win.wav",
       "/sounds/round_win.wav",
     ]);
   });

@@ -16,7 +16,11 @@ export interface SpeedPlayerInfo {
 export interface SpeedPlayerView {
   hand: Card[];
   players: SpeedPlayerInfo[];
-  state?: "WAITING" | "PLAYING" | "ENDED";
+  state?: "WAITING" | "COUNTDOWN" | "PLAYING" | "ENDED";
+  ready?: string[];
+  stuck?: string[];
+  countdownEndsAt?: number;
+  countdownKind?: "START" | "UNSTUCK";
   topCards: Card[];
   stuckPiles: number[];
   winner?: string;

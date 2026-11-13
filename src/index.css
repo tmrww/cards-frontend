@@ -85,13 +85,88 @@ button:disabled {
 
 /* ==================== LOBBY SCREEN ==================== */
 .lobby-screen {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
-  overflow: hidden;
+}
+
+.lobby-card {
+  width: 100%;
+  max-width: 380px;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lobby-title {
+  margin: 0 0 4px 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+  text-align: center;
+}
+
+.lobby-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lobby-card form > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.lobby-card label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.lobby-card input,
+.lobby-card select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.lobby-card form > div:last-child {
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.lobby-card button {
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lobby-card button[type="submit"] {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.lobby-card button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .lobby-container {
@@ -1262,6 +1337,18 @@ button:disabled {
   color: #854d0e;
 }
 
+.speed-countdown-banner {
+  max-width: 340px;
+  background: #eff6ff;
+  border: 2px solid #3b82f6;
+  color: #1e3a8a;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 12px 20px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.16);
+}
+
 .speed-seat-row {
   display: flex;
   align-items: center;
@@ -1329,6 +1416,12 @@ button:disabled {
   border: 2px solid #94a3b8;
   color: #f8fafc;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease, color 0.14s ease;
+}
+
+.speed-stuck-pile:disabled {
+  cursor: default;
 }
 
 .speed-stuck-pile--empty {
@@ -1337,6 +1430,13 @@ button:disabled {
   background: #e2e8f0;
   color: #64748b;
   box-shadow: none;
+}
+
+.speed-stuck-pile--requested {
+  background: #fef08a;
+  border-color: #eab308;
+  color: #854d0e;
+  box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.35);
 }
 
 .speed-pile-count {

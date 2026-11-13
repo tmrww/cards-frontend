@@ -106,7 +106,7 @@ function playAudioFile(filePath: string): void {
   }
 }
 
-export function playGameSound(soundKey: string, sourceId?: string): void {
+export function playGameSound(soundKey: string, _sourceId?: string): void {
   if (!gameSoundsEnabled) {
     return;
   }
@@ -116,13 +116,6 @@ export function playGameSound(soundKey: string, sourceId?: string): void {
     return;
   }
 
-  const effectiveSource = sourceId || `game:${soundKey}`;
-  const now = Date.now();
-  if (isOnCooldown(effectiveSource, now)) {
-    return;
-  }
-
-  lastSoundTimeBySource.set(effectiveSource, now);
   playAudioFile(filePath);
 }
 

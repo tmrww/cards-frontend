@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CardView } from "../../components/common/CardView";
 import { GameShell } from "../../components/common/GameShell";
 import { PlayerSeat } from "../../components/common/PlayerSeat";
 import { Direction, seatsFor, SeatPlacement, TableLayout } from "../../components/common/TableLayout";
+import { useHandOrder } from "../../hooks/useHandOrder";
 import type { Card } from "../../types";
 import { playGameSound } from "../../utils/sound";
 import type { GameModule, GameViewProps } from "../types";
@@ -42,6 +43,46 @@ function isCardHalfOutsideHand(cardRect: DOMRect, dx: number, dy: number, handRe
   return overlapArea / cardArea <= 0.5;
 }
 
+function reconcileSpeedHand(current: Card[], serverHand: Card[]): Card[] {
+  if (serverHand.length === 0) return [];
+  const serverById = new Map(serverHand.map((c) => [c.id, c]));
+  const kept: Card[] = [];
+  const keptIds = new Set<string>();
+  for (const c of current) {
+    const updated = serverById.get(c.id);
+    if (updated) {
+      kept.push(updated);
+      keptIds.add(c.id);
+    }
+  }
+  for (const c of serverHand) {
+    if (!keptIds.has(c.id)) {
+      kept.push(c);
+    }
+  }
+  return kept;
+}
+
+function findReorderTargetIndex(
+  wrappers: HTMLElement[],
+  fromIndex: number,
+  clientX: number
+): number {
+  for (let i = 0; i < fromIndex; i++) {
+    const rect = wrappers[i].getBoundingClientRect();
+    if (clientX < rect.left + rect.width / 2) {
+      return i;
+    }
+  }
+  for (let i = wrappers.length - 1; i > fromIndex; i--) {
+    const rect = wrappers[i].getBoundingClientRect();
+    if (clientX > rect.left + rect.width / 2) {
+      return i;
+    }
+  }
+  return fromIndex;
+}
+
 export const SpeedView: React.FC<Props> = ({
   roomId,
   playerId,
@@ -53,16 +94,26 @@ export const SpeedView: React.FC<Props> = ({
   clearError,
   leaveRoom,
 }) => {
+  const {
+    order: orderedHand,
+    orderRef: orderedHandRef,
+    setOrder: setOrderedHand,
+    move: moveHandCard,
+  } = useHandOrder<Card>();
   const [selectedPile, setSelectedPile] = useState<0 | 1 | null>(null);
   const [hasClickedReady, setHasClickedReady] = useState(false);
+  const [requestedUnstuckPile, setRequestedUnstuckPile] = useState<0 | 1 | null>(null);
+  const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
   const [infoMinimized, setInfoMinimized] = useState(false);
   const [dragOffset, setDragOffset] = useState<{ cardId: string; dx: number; dy: number } | null>(null);
 
   const handAreaRef = useRef<HTMLDivElement>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const prevWinnerRef = useRef<string | undefined>(undefined);
+  const prevTopCardsKeyRef = useRef<string>("");
+  const prevStuckLenRef = useRef<number>(0);
 
-  const gameState: "WAITING" | "PLAYING" | "ENDED" =
+  const gameState: "WAITING" | "COUNTDOWN" | "PLAYING" | "ENDED" =
     view?.state ??
     (view?.winner ? "ENDED" : (view?.topCards?.length ?? 0) > 0 ? "PLAYING" : "WAITING");
 
@@ -82,9 +133,47 @@ export const SpeedView: React.FC<Props> = ({
 
   const foundSeat = view?.players.findIndex((p) => p.id === playerId) ?? -1;
   const mySeat = foundSeat >= 0 ? foundSeat : 0;
-  const hand = view?.hand ?? [];
-  const topCards = view?.topCards ?? [];
+  const serverHand = useMemo(() => view?.hand ?? [], [view?.hand]);
+  const topCards = useMemo(() => view?.topCards ?? [], [view?.topCards]);
   const stuckPiles = view?.stuckPiles ?? [];
+  const topCardsKey = useMemo(() => topCards.map((c) => c.id).join(","), [topCards]);
+
+  // Keep local hand order synced with server hand, preserving user's drag order.
+  useEffect(() => {
+    setOrderedHand((prev) => reconcileSpeedHand(prev, serverHand));
+  }, [serverHand, setOrderedHand]);
+
+  // Clear unstuck request when leaving PLAYING, when topCards change, or when server clears stuck.
+  useEffect(() => {
+    const stuckLen = view?.stuck?.length ?? 0;
+    const topCardsChanged =
+      prevTopCardsKeyRef.current !== "" && prevTopCardsKeyRef.current !== topCardsKey;
+    const stuckCleared = prevStuckLenRef.current > 0 && stuckLen === 0;
+    prevTopCardsKeyRef.current = topCardsKey;
+    prevStuckLenRef.current = stuckLen;
+
+    if (gameState !== "PLAYING" || topCardsChanged || stuckCleared) {
+      setRequestedUnstuckPile(null);
+    }
+  }, [gameState, topCardsKey, view?.stuck]);
+
+  // Tick countdown every 100ms while in COUNTDOWN state.
+  useEffect(() => {
+    if (gameState !== "COUNTDOWN" || !view?.countdownEndsAt) {
+      setCountdownSeconds(null);
+      return;
+    }
+    const endsAt = view.countdownEndsAt;
+    const update = () => {
+      setCountdownSeconds(Math.max(1, Math.ceil((endsAt - Date.now()) / 1000)));
+    };
+    update();
+    const id = window.setInterval(update, 100);
+    return () => window.clearInterval(id);
+  }, [gameState, view?.countdownEndsAt]);
+
+  const isUnstuckRequested =
+    requestedUnstuckPile !== null || Boolean(view?.stuck?.includes(playerId));
 
   const playCard = useCallback(
     (card: Card) => {
@@ -112,10 +201,14 @@ export const SpeedView: React.FC<Props> = ({
     [gameState, handleDraw]
   );
 
-  const handleUnstuck = useCallback(() => {
-    if (gameState !== "PLAYING") return;
-    sendAction({ type: "UNSTUCK" });
-  }, [gameState, sendAction]);
+  const handleUnstuck = useCallback(
+    (pileIndex: 0 | 1 = 0) => {
+      if (gameState !== "PLAYING") return;
+      setRequestedUnstuckPile(pileIndex);
+      sendAction({ type: "UNSTUCK" });
+    },
+    [gameState, sendAction]
+  );
 
   const handleReady = useCallback(() => {
     setHasClickedReady(true);
@@ -148,17 +241,17 @@ export const SpeedView: React.FC<Props> = ({
 
       if (e.key >= "1" && e.key <= "5") {
         const idx = Number(e.key) - 1;
-        if (idx < hand.length) {
-          playCard(hand[idx]);
+        if (idx < orderedHand.length) {
+          playCard(orderedHand[idx]);
         }
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [gameState, hand, playCard, handleDraw]);
+  }, [gameState, orderedHand, playCard, handleDraw]);
 
-  // Pointer drag-out-of-hand handling.
+  // Pointer drag-in-hand (reorder) and drag-out-of-hand (play) handling.
   useEffect(() => {
     const onPointerMove = (e: PointerEvent) => {
       const drag = dragStateRef.current;
@@ -166,6 +259,22 @@ export const SpeedView: React.FC<Props> = ({
       const dx = e.clientX - drag.startX;
       const dy = e.clientY - drag.startY;
       setDragOffset({ cardId: drag.card.id, dx, dy });
+
+      if (Math.hypot(dx, dy) <= DRAG_ACTIVATION_PX) return;
+
+      const handArea = handAreaRef.current;
+      const handRect = handArea?.getBoundingClientRect();
+      if (handArea && handRect && !isCardHalfOutsideHand(drag.cardRect, dx, dy, handRect)) {
+        const wrappers = Array.from(handArea.querySelectorAll<HTMLElement>(".speed-card-wrapper"));
+        const currentOrder = orderedHandRef.current;
+        const fromIndex = currentOrder.findIndex((c) => c.id === drag.card.id);
+        if (fromIndex !== -1 && wrappers.length === currentOrder.length) {
+          const targetIndex = findReorderTargetIndex(wrappers, fromIndex, e.clientX);
+          if (targetIndex !== fromIndex) {
+            moveHandCard(fromIndex, targetIndex);
+          }
+        }
+      }
     };
 
     const finishDrag = (e: PointerEvent, shouldCheckPlay: boolean) => {
@@ -196,7 +305,7 @@ export const SpeedView: React.FC<Props> = ({
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, [playCard]);
+  }, [playCard, orderedHandRef, moveHandCard]);
 
   const handleCardPointerDown = (e: React.PointerEvent<HTMLDivElement>, card: Card) => {
     if (e.button !== 0 && e.button !== undefined) return;
@@ -228,7 +337,7 @@ export const SpeedView: React.FC<Props> = ({
 
     const seatEl = (
       <PlayerSeat direction={direction} name={p?.name} isTurn={false} isMe={isMe}>
-        <span>Deck: {p?.deckSize ?? 0}</span>
+        <span>Hand: {p?.handSize ?? 0}</span>
       </PlayerSeat>
     );
 
@@ -258,14 +367,21 @@ export const SpeedView: React.FC<Props> = ({
 
   const renderStuckPile = (index: 0 | 1) => {
     const count = stuckPiles[index] ?? 0;
+    const isRequested = isUnstuckRequested && (requestedUnstuckPile ?? 0) === index;
     return (
-      <div
-        className={`speed-pile speed-stuck-pile ${count === 0 ? "speed-stuck-pile--empty" : ""}`}
+      <button
+        type="button"
+        className={`speed-pile speed-stuck-pile ${count === 0 ? "speed-stuck-pile--empty" : ""} ${
+          isRequested ? "speed-stuck-pile--requested" : ""
+        }`}
         data-testid={`stuck-pile-${index}`}
+        aria-pressed={isRequested}
+        disabled={gameState !== "PLAYING"}
+        onClick={() => handleUnstuck(index)}
       >
         <span className="speed-pile-count">{count}</span>
         <span className="speed-pile-label">Stuck</span>
-      </div>
+      </button>
     );
   };
 
@@ -343,6 +459,19 @@ export const SpeedView: React.FC<Props> = ({
             </div>
           )}
 
+          {gameState === "COUNTDOWN" && view?.countdownEndsAt && (
+            <div
+              className="center-status-box speed-countdown-banner"
+              data-testid="speed-countdown-banner"
+            >
+              <h3>
+                {view.countdownKind === "UNSTUCK"
+                  ? `Unstucking in ${countdownSeconds ?? Math.max(1, Math.ceil((view.countdownEndsAt - Date.now()) / 1000))}...`
+                  : `Game starting in ${countdownSeconds ?? Math.max(1, Math.ceil((view.countdownEndsAt - Date.now()) / 1000))}...`}
+              </h3>
+            </div>
+          )}
+
           {gameState === "ENDED" && (
             <div className="center-status-box speed-winner-banner" data-testid="speed-winner-banner">
               <h3>Game Over!</h3>
@@ -393,15 +522,20 @@ export const SpeedView: React.FC<Props> = ({
                 type="button"
                 className="btn-secondary"
                 data-testid="speed-unstuck-btn"
-                onClick={handleUnstuck}
+                onClick={() => handleUnstuck(0)}
               >
-                Unstuck
+                {isUnstuckRequested ? "Unstuck Requested" : "Unstuck"}
               </button>
             </>
           )}
         </div>
 
         <div className="action-group-right">
+          {gameState === "COUNTDOWN" && (
+            <span className="drag-hint">
+              Drag cards in your hand to reorder before play begins
+            </span>
+          )}
           {gameState === "PLAYING" && selectedPile === null && (
             <span className="speed-pile-hint" data-testid="speed-pile-hint">
               Select a discard pile (← / → or click) to play
@@ -416,14 +550,14 @@ export const SpeedView: React.FC<Props> = ({
       </div>
 
       <div className="speed-hand-area" data-testid="speed-hand-area" ref={handAreaRef}>
-        {hand.length === 0 ? (
+        {orderedHand.length === 0 ? (
           <div className="empty-hand-msg speed-hand-empty">
             {gameState === "WAITING"
               ? "Cards will be dealt once both players Ready Up."
               : "No cards in hand."}
           </div>
         ) : (
-          hand.map((card, index) => {
+          orderedHand.map((card, index) => {
             const isDragging = dragOffset?.cardId === card.id;
             const style: React.CSSProperties | undefined = isDragging
               ? { transform: `translate(${dragOffset.dx}px, ${dragOffset.dy}px)` }
