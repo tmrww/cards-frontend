@@ -493,26 +493,51 @@ describe("SpeedView", () => {
       expect(sendAction).toHaveBeenCalledWith({ type: "READY" });
     });
 
-    it("highlights the clicked stuck pile or left pile on Unstuck button and shows Unstuck Requested", () => {
-      const { sendAction: send1, unmount: unmount1 } = renderSpeed();
+    it("highlights the clicked stuck pile or left pile on Unstuck button only when server confirms unstuck", () => {
+      const { sendAction: send1, rerender: rerender1, sendChat: sc1, clearError: ce1, leaveRoom: lr1, unmount: unmount1 } = renderSpeed();
       fireEvent.click(screen.getByTestId("stuck-pile-1"));
       expect(send1).toHaveBeenCalledWith({ type: "UNSTUCK" });
+      // Not lit up until server includes playerId in view.stuck (e.g. if server rejects)
+      expect(screen.getByTestId("speed-unstuck-btn")).toHaveTextContent("Unstuck (U)");
+      expect(screen.getByTestId("stuck-pile-1")).not.toHaveClass("speed-stuck-pile--requested");
+
+      rerender1(
+        <SpeedView
+          roomId="ROOM1"
+          playerId="p0"
+          view={makeSpeedView({ stuck: ["p0"] })}
+          chatMessages={[]}
+          error={null}
+          sendAction={send1}
+          sendChat={sc1}
+          clearError={ce1}
+          leaveRoom={lr1}
+        />
+      );
       expect(screen.getByTestId("speed-unstuck-btn")).toHaveTextContent("Unstuck Requested");
       expect(screen.getByTestId("stuck-pile-1")).toHaveClass("speed-stuck-pile--requested");
       expect(screen.getByTestId("stuck-pile-0")).not.toHaveClass("speed-stuck-pile--requested");
       unmount1();
 
-      const { sendAction: send0, unmount: unmount0 } = renderSpeed();
-      fireEvent.click(screen.getByTestId("stuck-pile-0"));
-      expect(send0).toHaveBeenCalledWith({ type: "UNSTUCK" });
-      expect(screen.getByTestId("speed-unstuck-btn")).toHaveTextContent("Unstuck Requested");
-      expect(screen.getByTestId("stuck-pile-0")).toHaveClass("speed-stuck-pile--requested");
-      expect(screen.getByTestId("stuck-pile-1")).not.toHaveClass("speed-stuck-pile--requested");
-      unmount0();
-
-      const { sendAction: sendBtn } = renderSpeed();
+      const { sendAction: sendBtn, rerender: rerenderBtn, sendChat: scB, clearError: ceB, leaveRoom: lrB } = renderSpeed();
       fireEvent.click(screen.getByTestId("speed-unstuck-btn"));
       expect(sendBtn).toHaveBeenCalledWith({ type: "UNSTUCK" });
+      expect(screen.getByTestId("speed-unstuck-btn")).toHaveTextContent("Unstuck (U)");
+      expect(screen.getByTestId("stuck-pile-0")).not.toHaveClass("speed-stuck-pile--requested");
+
+      rerenderBtn(
+        <SpeedView
+          roomId="ROOM1"
+          playerId="p0"
+          view={makeSpeedView({ stuck: ["p0"] })}
+          chatMessages={[]}
+          error={null}
+          sendAction={sendBtn}
+          sendChat={scB}
+          clearError={ceB}
+          leaveRoom={lrB}
+        />
+      );
       expect(screen.getByTestId("speed-unstuck-btn")).toHaveTextContent("Unstuck Requested");
       expect(screen.getByTestId("stuck-pile-0")).toHaveClass("speed-stuck-pile--requested");
       expect(screen.getByTestId("stuck-pile-1")).not.toHaveClass("speed-stuck-pile--requested");
@@ -617,6 +642,91 @@ describe("SpeedView", () => {
 
       expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/?code=ROOM1`);
       expect(await screen.findByText("Copied!")).toBeInTheDocument();
+    });
+  });
+
+  describe("unstuck keybind, opponent banner, and card play animations", () => {
+    it("triggers UNSTUCK on U keybind and shows yellow banner under opponent when opponent requests unstuck", () => {
+      const { sendAction, rerender, sendChat, clearError, leaveRoom } = renderSpeed();
+
+      expect(screen.queryByTestId("opponent-unstuck-banner")).toBeNull();
+
+      fireEvent.keyDown(window, { key: "u" });
+      expect(sendAction).toHaveBeenCalledWith({ type: "UNSTUCK" });
+      // Remains unlit until server confirms in view.stuck
+      expect(screen.getByTestId("speed-unstuck-btn")).toHaveTextContent("Unstuck (U)");
+      expect(screen.getByTestId("stuck-pile-0")).not.toHaveClass("speed-stuck-pile--requested");
+
+      rerender(
+        <SpeedView
+          roomId="ROOM1"
+          playerId="p0"
+          view={makeSpeedView({ stuck: ["p0", "p1"] })}
+          chatMessages={[]}
+          error={null}
+          sendAction={sendAction}
+          sendChat={sendChat}
+          clearError={clearError}
+          leaveRoom={leaveRoom}
+        />
+      );
+      expect(screen.getByTestId("speed-unstuck-btn")).toHaveTextContent("Unstuck Requested");
+      expect(screen.getByTestId("stuck-pile-0")).toHaveClass("speed-stuck-pile--requested");
+
+      const banner = screen.getByTestId("opponent-unstuck-banner");
+      expect(banner).toBeInTheDocument();
+      expect(banner).toHaveTextContent("Requesting unstuck...");
+      expect(screen.getByTestId("speed-play-area").querySelector(".speed-seat-north")).toContainElement(
+        banner
+      );
+    });
+
+    it("animates newly played cards from bottom when played from hand and from top when played by opponent", () => {
+      const { rerender, sendAction, sendChat, clearError, leaveRoom } = renderSpeed({
+        state: "PLAYING",
+      });
+
+      // Play our card h1 onto pile 0 (h1 leaves hand and lands on topCards[0])
+      rerender(
+        <SpeedView
+          roomId="ROOM1"
+          playerId="p0"
+          view={makeSpeedView({
+            state: "PLAYING",
+            hand: [card("h2", 1, 5), card("h3", 2, 8), card("h4", 3, 11), card("h5", 0, 1)],
+            topCards: [card("h1", 0, 2), card("t1", 3, 9)],
+          })}
+          chatMessages={[]}
+          error={null}
+          sendAction={sendAction}
+          sendChat={sendChat}
+          clearError={clearError}
+          leaveRoom={leaveRoom}
+        />
+      );
+
+      expect(screen.getByTestId("discard-card-anim-0")).toHaveClass("speed-card-play--bottom");
+
+      // Opponent plays opp1 onto pile 1 (opp1 was not in our hand)
+      rerender(
+        <SpeedView
+          roomId="ROOM1"
+          playerId="p0"
+          view={makeSpeedView({
+            state: "PLAYING",
+            hand: [card("h2", 1, 5), card("h3", 2, 8), card("h4", 3, 11), card("h5", 0, 1)],
+            topCards: [card("h1", 0, 2), card("opp1", 2, 10)],
+          })}
+          chatMessages={[]}
+          error={null}
+          sendAction={sendAction}
+          sendChat={sendChat}
+          clearError={clearError}
+          leaveRoom={leaveRoom}
+        />
+      );
+
+      expect(screen.getByTestId("discard-card-anim-1")).toHaveClass("speed-card-play--top");
     });
   });
 });

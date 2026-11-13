@@ -1198,6 +1198,22 @@ button:disabled {
   flex-shrink: 0;
 }
 
+.hand-row .hand-card,
+.speed-hand-area .hand-card {
+  animation: hand-card-enter 0.2s ease-out;
+}
+
+@keyframes hand-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .hand-card:first-child {
   margin-left: 0;
 }
@@ -1552,6 +1568,72 @@ button:disabled {
   color: #334155;
   padding: 1px 5px;
   border-radius: 3px;
+}
+
+.speed-opponent-seat-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.speed-opponent-unstuck-banner {
+  background: #fef08a;
+  border: 1px solid #eab308;
+  color: #854d0e;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(234, 179, 8, 0.25);
+  animation: speed-slide-down 0.2s ease-out both;
+}
+
+@keyframes speed-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.speed-discard-card-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.speed-card-play--bottom {
+  animation: speed-card-from-bottom 0.18s ease-out both;
+}
+
+.speed-card-play--top {
+  animation: speed-card-from-top 0.18s ease-out both;
+}
+
+@keyframes speed-card-from-bottom {
+  from {
+    opacity: 0.35;
+    transform: translateY(52px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes speed-card-from-top {
+  from {
+    opacity: 0.35;
+    transform: translateY(-52px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @media (max-width: 640px) {

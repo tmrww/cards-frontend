@@ -134,6 +134,9 @@ export const SpeedView: React.FC<Props> = ({
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
   const [infoMinimized, setInfoMinimized] = useState(false);
   const [dragOffset, setDragOffset] = useState<{ cardId: string; dx: number; dy: number } | null>(null);
+  const [pilePlayAnim, setPilePlayAnim] = useState<
+    [{ cardId: string; from: "bottom" | "top" } | null, { cardId: string; from: "bottom" | "top" } | null]
+  >([null, null]);
 
   const handAreaRef = useRef<HTMLDivElement>(null);
   const discardPile0Ref = useRef<HTMLButtonElement>(null);
@@ -142,6 +145,9 @@ export const SpeedView: React.FC<Props> = ({
   const prevWinnerRef = useRef<string | undefined>(undefined);
   const prevTopCardsKeyRef = useRef<string>("");
   const prevStuckLenRef = useRef<number>(0);
+  const prevTopCardsRef = useRef<(Card | null | undefined)[]>([]);
+  const prevHandIdsRef = useRef<Set<string>>(new Set());
+  const prevGameStateRef = useRef<"WAITING" | "COUNTDOWN" | "PLAYING" | "ENDED">("WAITING");
 
   const gameState: "WAITING" | "COUNTDOWN" | "PLAYING" | "ENDED" =
     view?.state ??
@@ -192,10 +198,39 @@ export const SpeedView: React.FC<Props> = ({
     prevTopCardsKeyRef.current = topCardsKey;
     prevStuckLenRef.current = stuckLen;
 
-    if (gameState !== "PLAYING" || topCardsChanged || stuckCleared) {
+    if (gameState !== "PLAYING" || topCardsChanged || stuckCleared || (error && !view?.stuck?.includes(playerId))) {
       setRequestedUnstuckPile(null);
     }
-  }, [gameState, topCardsKey, view?.stuck]);
+  }, [gameState, topCardsKey, view?.stuck, error, playerId]);
+
+  // Animate newly played cards on discard piles: from bottom if played by you, from top if by opponent.
+  useEffect(() => {
+    if (prevGameStateRef.current === "PLAYING" && gameState === "PLAYING") {
+      const nextAnims: [
+        { cardId: string; from: "bottom" | "top" } | null,
+        { cardId: string; from: "bottom" | "top" } | null,
+      ] = [null, null];
+      let changed = false;
+      for (let i = 0; i < 2; i++) {
+        const nextCard = topCards[i];
+        const prevCard = prevTopCardsRef.current[i];
+        if (nextCard && prevCard && nextCard.id !== prevCard.id) {
+          const from = prevHandIdsRef.current.has(nextCard.id) ? "bottom" : "top";
+          nextAnims[i] = { cardId: nextCard.id, from };
+          changed = true;
+        }
+      }
+      if (changed) {
+        setPilePlayAnim((prev) => [nextAnims[0] ?? prev[0], nextAnims[1] ?? prev[1]]);
+      }
+    } else if (gameState !== "PLAYING") {
+      setPilePlayAnim([null, null]);
+    }
+
+    prevTopCardsRef.current = topCards;
+    prevHandIdsRef.current = new Set(serverHand.map((c) => c.id));
+    prevGameStateRef.current = gameState;
+  }, [gameState, topCards, serverHand]);
 
   // Tick countdown every 100ms while in COUNTDOWN state.
   useEffect(() => {
@@ -212,8 +247,7 @@ export const SpeedView: React.FC<Props> = ({
     return () => window.clearInterval(id);
   }, [gameState, view?.countdownEndsAt]);
 
-  const isUnstuckRequested =
-    requestedUnstuckPile !== null || Boolean(view?.stuck?.includes(playerId));
+  const isUnstuckRequested = Boolean(view?.stuck?.includes(playerId));
 
   const playCardToPile = useCallback(
     (card: Card, pile: 0 | 1) => {
@@ -284,6 +318,14 @@ export const SpeedView: React.FC<Props> = ({
         return;
       }
 
+      if (e.key === "u" || e.key === "U") {
+        if (gameState === "PLAYING") {
+          e.preventDefault();
+          handleUnstuck(0);
+        }
+        return;
+      }
+
       if (controlMode === "absolute") {
         if (e.key === "ArrowLeft") {
           e.preventDefault();
@@ -341,7 +383,7 @@ export const SpeedView: React.FC<Props> = ({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [gameState, controlMode, orderedHand, effectiveSelectedCardIndex, playCard, handleDraw]);
+  }, [gameState, controlMode, orderedHand, effectiveSelectedCardIndex, playCard, handleDraw, handleUnstuck]);
 
   // Compensate drag origin when flex reordering shifts the dragged card's slot so offset isn't added twice.
   useLayoutEffect(() => {
@@ -485,9 +527,17 @@ export const SpeedView: React.FC<Props> = ({
         </div>
       );
     }
+    const opponentRequestedUnstuck = Boolean(p?.id && view?.stuck?.includes(p.id));
     return (
       <div className="speed-seat-row speed-seat-north">
-        {seatEl}
+        <div className="speed-opponent-seat-col">
+          {seatEl}
+          {opponentRequestedUnstuck && (
+            <div className="speed-opponent-unstuck-banner" data-testid="opponent-unstuck-banner">
+              Requesting unstuck...
+            </div>
+          )}
+        </div>
         {deckEl}
       </div>
     );
@@ -506,9 +556,8 @@ export const SpeedView: React.FC<Props> = ({
     return (
       <button
         type="button"
-        className={`speed-pile speed-stuck-pile ${count === 0 ? "speed-stuck-pile--empty" : ""} ${
-          isRequested ? "speed-stuck-pile--requested" : ""
-        }`}
+        className={`speed-pile speed-stuck-pile ${count === 0 ? "speed-stuck-pile--empty" : ""} ${isRequested ? "speed-stuck-pile--requested" : ""
+          }`}
         data-testid={`stuck-pile-${index}`}
         aria-pressed={isRequested}
         disabled={gameState !== "PLAYING"}
@@ -523,6 +572,12 @@ export const SpeedView: React.FC<Props> = ({
   const renderDiscardPile = (index: 0 | 1) => {
     const card = topCards[index];
     const isSelected = dragHoverPile !== null ? dragHoverPile === index : selectedPile === index;
+    const anim = card && pilePlayAnim[index]?.cardId === card.id ? pilePlayAnim[index] : null;
+    const animClass = anim
+      ? anim.from === "bottom"
+        ? "speed-card-play--bottom"
+        : "speed-card-play--top"
+      : "";
     return (
       <button
         ref={index === 0 ? discardPile0Ref : discardPile1Ref}
@@ -533,7 +588,18 @@ export const SpeedView: React.FC<Props> = ({
         aria-pressed={isSelected}
         onClick={() => setSelectedPile(index)}
       >
-        {card ? <CardView card={card} /> : <span className="speed-pile-label">Pile {index + 1}</span>}
+        {card ? (
+          <div
+            key={card.id}
+            className={`speed-discard-card-wrap ${animClass}`}
+            data-testid={`discard-card-anim-${index}`}
+            data-play-from={anim?.from}
+          >
+            <CardView card={card} />
+          </div>
+        ) : (
+          <span className="speed-pile-label">Pile {index + 1}</span>
+        )}
       </button>
     );
   };
@@ -687,7 +753,7 @@ export const SpeedView: React.FC<Props> = ({
                 data-testid="speed-unstuck-btn"
                 onClick={() => handleUnstuck(0)}
               >
-                {isUnstuckRequested ? "Unstuck Requested" : "Unstuck"}
+                {isUnstuckRequested ? "Unstuck Requested" : "Unstuck (U)"}
               </button>
             </>
           )}
@@ -709,8 +775,8 @@ export const SpeedView: React.FC<Props> = ({
               {controlMode === "dual-cards-pile"
                 ? `Playing to Pile ${selectedPile + 1} • A/D select, W/↑ play, double-click, or drag out`
                 : controlMode === "dual-pile-cards"
-                ? `Playing to Pile ${selectedPile + 1} • ←/→ select, W/↑ play, double-click, or drag out`
-                : `Playing to Pile ${selectedPile + 1} • Press 1–5, double-click, or drag out`}
+                  ? `Playing to Pile ${selectedPile + 1} • ←/→ select, W/↑ play, double-click, or drag out`
+                  : `Playing to Pile ${selectedPile + 1} • Press 1–5, double-click, or drag out`}
             </span>
           )}
         </div>

@@ -220,7 +220,7 @@ Uses a fake `WebSocket` and `VITE_WS_URL=ws://test`.
 | keeps the player id using the legacy storage key | session migration | id `P_OLD01` reused and copied to the new key |
 | toggles game sounds and chat sounds from the bottom-left bar | sound toggles | `Game Sounds: On`/`Off` and `Chat Sounds: On`/`Off` update text and `aria-pressed` |
 
-## `src/games/speed/SpeedView.test.tsx` (21)
+## `src/games/speed/SpeedView.test.tsx` (23)
 | Test | Purpose | Expected |
 | :--- | :--- | :--- |
 | places opponent at N, you at S, decks on left/right, 4 center piles, and 5-card hand | setup rendering | N/S seats, `my-deck` left, `opponent-deck` right, 2 face-down stuck piles, 2 face-up discard piles, 5 hand cards |
@@ -244,6 +244,8 @@ Uses a fake `WebSocket` and `VITE_WS_URL=ws://test`.
 | renders speed-countdown-banner for UNSTUCK | unstuck countdown | `speed-countdown-banner` shows `Unstucking in ...` |
 | shows winner banner with (You!) when viewer wins, and opponent name when opponent wins | winner display | `speed-winner-banner` shows winner and `(You!)` only for self |
 | copies the invite link with `?code=` when clicking the room code | room invite copy | `navigator.clipboard.writeText` called with `/?code=ROOM1` and shows `Copied!` |
+| triggers UNSTUCK on U keybind and shows yellow banner under opponent when opponent requests unstuck | unstuck keybind & opponent banner | `U` sends `UNSTUCK` and highlights `stuck-pile-0`; `opponent-unstuck-banner` renders under North seat when opponent in `stuck` |
+| animates newly played cards from bottom when played from hand and from top when played by opponent | card play animation | `speed-card-play--bottom` for cards played from your hand, `speed-card-play--top` for opponent plays |
 
 ---
 
