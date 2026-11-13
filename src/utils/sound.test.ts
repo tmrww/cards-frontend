@@ -11,7 +11,7 @@ class FakeAudio {
   play() {
     return Promise.resolve();
   }
-  pause() {}
+  pause() { }
 }
 
 async function loadSound() {

@@ -100,5 +100,39 @@ describe("BasicLobbyView", () => {
     expect(screenEl).toContainElement(cardEl as HTMLElement);
     expect(screen.getByRole("heading", { name: "Card Games" })).toHaveClass("lobby-title");
   });
+
+  it("clears the code input and ?code= URL parameter when room is not found", () => {
+    const prev = window.location.search;
+    window.history.replaceState(null, "", "/?code=BAD12");
+    try {
+      const { rerender } = render(
+        <BasicLobbyView
+          connected
+          playerName="Ann"
+          error={null}
+          onPlayerNameChange={vi.fn()}
+          onCreateRoom={vi.fn()}
+          onJoinRoom={vi.fn()}
+        />
+      );
+      expect(screen.getByLabelText(/Code/)).toHaveValue("BAD12");
+
+      rerender(
+        <BasicLobbyView
+          connected
+          playerName="Ann"
+          error="Room not found."
+          onPlayerNameChange={vi.fn()}
+          onCreateRoom={vi.fn()}
+          onJoinRoom={vi.fn()}
+        />
+      );
+
+      expect(screen.getByLabelText(/Code/)).toHaveValue("");
+      expect(window.location.search).toBe("");
+    } finally {
+      window.history.replaceState(null, "", prev || "/");
+    }
+  });
 });
 

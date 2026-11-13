@@ -349,7 +349,7 @@ describe("SpeedView", () => {
         state: "COUNTDOWN",
         countdownKind: "START",
         countdownEndsAt: Date.now() + 2500,
-        topCards: [],
+        topCards: [null, null],
       });
 
       const banner = screen.getByTestId("speed-countdown-banner");

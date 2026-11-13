@@ -21,7 +21,7 @@ export interface SpeedPlayerView {
   stuck?: string[];
   countdownEndsAt?: number;
   countdownKind?: "START" | "UNSTUCK";
-  topCards: Card[];
+  topCards: (Card | null)[];
   stuckPiles: number[];
   winner?: string;
 }

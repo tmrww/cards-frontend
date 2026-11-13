@@ -21,6 +21,10 @@ interface DragState {
   cardRect: DOMRect;
 }
 
+function topCardsSomePresent(topCards?: (Card | null | undefined)[]): boolean {
+  return Boolean(topCards?.some((c) => Boolean(c)));
+}
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
@@ -115,7 +119,7 @@ export const SpeedView: React.FC<Props> = ({
 
   const gameState: "WAITING" | "COUNTDOWN" | "PLAYING" | "ENDED" =
     view?.state ??
-    (view?.winner ? "ENDED" : (view?.topCards?.length ?? 0) > 0 ? "PLAYING" : "WAITING");
+    (view?.winner ? "ENDED" : topCardsSomePresent(view?.topCards) ? "PLAYING" : "WAITING");
 
   useEffect(() => {
     if (gameState !== "WAITING") {
@@ -136,7 +140,7 @@ export const SpeedView: React.FC<Props> = ({
   const serverHand = useMemo(() => view?.hand ?? [], [view?.hand]);
   const topCards = useMemo(() => view?.topCards ?? [], [view?.topCards]);
   const stuckPiles = view?.stuckPiles ?? [];
-  const topCardsKey = useMemo(() => topCards.map((c) => c.id).join(","), [topCards]);
+  const topCardsKey = useMemo(() => topCards.map((c) => c?.id ?? "").join(","), [topCards]);
 
   // Keep local hand order synced with server hand, preserving user's drag order.
   useEffect(() => {

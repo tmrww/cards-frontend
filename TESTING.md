@@ -188,7 +188,7 @@ Uses a fake `Audio`, fake timers and a fresh module per test (cooldown state is 
 | TableLayout renders each edge and the center | layout | content in the right regions |
 | TableLayout leaves unused edges empty | layout | W and E empty |
 
-## `src/components/BasicLobbyView.test.tsx` (11)
+## `src/components/BasicLobbyView.test.tsx` (12)
 | Test | Purpose | Expected |
 | :--- | :--- | :--- |
 | lists registry games, defaulting to the first | dropdown | "Guan Dan" first, value `guandan` |
@@ -202,6 +202,7 @@ Uses a fake `Audio`, fake timers and a fresh module per test (cooldown state is 
 | pre-fills the room code from the `?code=` URL parameter | URL query `?code=ab12c9` | Code input `AB12C`, Join enabled and submits `AB12C` |
 | hides the game dropdown when text is entered in the code box | code input visibility | Game dropdown hidden for `"AB12"`, shown again for whitespace |
 | renders inside .lobby-screen and .lobby-card containers | lobby layout | `.lobby-screen` contains `.lobby-card` and `.lobby-title` |
+| clears the code input and `?code=` URL parameter when room is not found | invalid room code | Code input cleared to `""` and `?code=` removed from `window.location.search` |
 
 ## `src/App.test.tsx` (9)
 Uses a fake `WebSocket` and `VITE_WS_URL=ws://test`.

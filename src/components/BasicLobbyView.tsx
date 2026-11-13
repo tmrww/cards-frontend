@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { listLobbyGames } from "../games/registry";
 
 export interface BasicLobbyViewProps {
@@ -27,6 +27,22 @@ export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
   const games = listLobbyGames();
   const [code, setCode] = useState(getInitialCode);
   const [gameType, setGameType] = useState(games[0].id);
+
+  useEffect(() => {
+    if (!error || !/room not found|not found|invalid.*code|invalid.*room/i.test(error)) {
+      return;
+    }
+    setCode("");
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("code")) {
+        url.searchParams.delete("code");
+        const nextSearch = url.searchParams.toString();
+        const nextUrl = `${url.pathname}${nextSearch ? `?${nextSearch}` : ""}${url.hash}`;
+        window.history.replaceState(null, "", nextUrl);
+      }
+    }
+  }, [error]);
 
   const hasName = playerName.trim() !== "";
 
