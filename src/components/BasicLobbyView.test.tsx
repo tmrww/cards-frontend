@@ -36,8 +36,9 @@ describe("BasicLobbyView", () => {
     expect(onCreateRoom).toHaveBeenCalledWith("placeholder");
   });
 
-  it("joins with an upper-cased, trimmed code", () => {
+  it("joins with an upper-cased, trimmed code on the Join tab", () => {
     const { onJoinRoom } = setup();
+    fireEvent.click(screen.getByTestId("lobby-tab-join"));
     fireEvent.change(screen.getByLabelText(/Code/), { target: { value: "ab12 " } });
     fireEvent.click(screen.getByText("Join"));
     expect(onJoinRoom).toHaveBeenCalledWith("AB12");
@@ -45,14 +46,16 @@ describe("BasicLobbyView", () => {
 
   it("disables Join and Host without a name, a code, or a connection", () => {
     setup({ playerName: "  " });
-    expect(screen.getByText("Join")).toBeDisabled();
     expect(screen.getByText("Host")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("lobby-tab-join"));
+    expect(screen.getByText("Join")).toBeDisabled();
   });
 
   it("disables Join until a code is entered", () => {
     setup();
-    expect(screen.getByText("Join")).toBeDisabled();
     expect(screen.getByText("Host")).toBeEnabled();
+    fireEvent.click(screen.getByTestId("lobby-tab-join"));
+    expect(screen.getByText("Join")).toBeDisabled();
   });
 
   it("shows connection status and errors", () => {
@@ -82,13 +85,20 @@ describe("BasicLobbyView", () => {
     }
   });
 
-  it("hides the game dropdown when text is entered in the code box", () => {
+  it("separates Host (game dropdown) and Join (code box) into two tabs", () => {
     setup();
+    expect(screen.getByTestId("lobby-tab-host")).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText(/Game/)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/Code/), { target: { value: "AB12" } });
-    expect(screen.queryByLabelText(/Game/)).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/Code/), { target: { value: "   " } });
+    expect(screen.queryByLabelText(/Code/)).toBeNull();
+
+    fireEvent.click(screen.getByTestId("lobby-tab-join"));
+    expect(screen.getByTestId("lobby-tab-join")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText(/Code/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Game/)).toBeNull();
+
+    fireEvent.click(screen.getByTestId("lobby-tab-host"));
     expect(screen.getByLabelText(/Game/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Code/)).toBeNull();
   });
 
   it("renders inside .lobby-screen and .lobby-card containers", () => {

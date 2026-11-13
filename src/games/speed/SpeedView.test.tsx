@@ -484,8 +484,11 @@ describe("SpeedView", () => {
       expect(sendAction).toHaveBeenNthCalledWith(2, { type: "DRAW" });
     });
 
-    it("sends READY when Ready Up button is clicked in waiting state", () => {
-      const { sendAction } = renderSpeed({ hand: [], topCards: [] });
+    it("sends READY when Ready Up button is clicked in waiting state and shows Ready/Not Ready pills", () => {
+      const { sendAction, container } = renderSpeed({ hand: [], topCards: [], ready: ["p1"] });
+      expect(container.querySelector(".table-north")).toHaveTextContent("Ready");
+      expect(container.querySelector(".table-south")).toHaveTextContent("Not Ready");
+
       const readyBtn = screen.getByTestId("speed-ready-btn");
       expect(readyBtn).toBeInTheDocument();
 

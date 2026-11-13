@@ -200,7 +200,7 @@ Uses a fake `Audio`, fake timers and a fresh module per test (cooldown state is 
 | shows connection status and errors | status | message, `lobby-error`, Host disabled |
 | reports username edits | name input | `onPlayerNameChange("Bo")` |
 | pre-fills the room code from the `?code=` URL parameter | URL query `?code=ab12c9` | Code input `AB12C`, Join enabled and submits `AB12C` |
-| hides the game dropdown when text is entered in the code box | code input visibility | Game dropdown hidden for `"AB12"`, shown again for whitespace |
+| separates Host (game dropdown) and Join (code box) into two tabs | lobby tabs | Host tab shows Game dropdown only; Join tab shows Code input only |
 | renders inside .lobby-screen and .lobby-card containers | lobby layout | `.lobby-screen` contains `.lobby-card` and `.lobby-title` |
 | clears the code input and `?code=` URL parameter when room is not found | invalid room code | Code input cleared to `""` and `?code=` removed from `window.location.search` |
 

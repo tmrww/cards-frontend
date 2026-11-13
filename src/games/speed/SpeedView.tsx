@@ -512,9 +512,27 @@ export const SpeedView: React.FC<Props> = ({
     const isMe = offset === 0 && p?.id === playerId;
     const deckEl = renderDeck(p?.deckSize ?? 0, isMe);
 
+    const ready = Boolean(p && view?.ready?.includes(p.id));
+    const statusLabel =
+      gameState === "ENDED"
+        ? view?.winner === p?.id
+          ? "WINNER"
+          : "FINISHED"
+        : gameState === "COUNTDOWN"
+          ? "COUNTDOWN"
+          : "PLAYING";
+
     const seatEl = (
       <PlayerSeat direction={direction} name={p?.name} isTurn={false} isMe={isMe}>
         <span>Hand: {p?.handSize ?? 0}</span>
+        {p && gameState === "WAITING" && (
+          <span className={`status-pill ${ready ? "ready" : "wait"}`}>
+            {ready ? "Ready" : "Not Ready"}
+          </span>
+        )}
+        {p && gameState !== "WAITING" && (
+          <span className="status-pill status-playing">{statusLabel}</span>
+        )}
       </PlayerSeat>
     );
 
@@ -731,10 +749,12 @@ export const SpeedView: React.FC<Props> = ({
               type="button"
               className="btn-primary"
               data-testid="speed-ready-btn"
-              disabled={hasClickedReady}
+              disabled={hasClickedReady || Boolean(view?.ready?.includes(playerId))}
               onClick={handleReady}
             >
-              {hasClickedReady ? "Ready ✓ (Waiting for opponent)" : "Ready Up"}
+              {hasClickedReady || Boolean(view?.ready?.includes(playerId))
+                ? "Ready ✓ (Waiting for opponent)"
+                : "Ready Up"}
             </button>
           )}
           {gameState === "PLAYING" && (

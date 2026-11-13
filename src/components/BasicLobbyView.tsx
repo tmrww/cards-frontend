@@ -16,6 +16,8 @@ function getInitialCode(): string {
   return param ? param.trim().toUpperCase().slice(0, 5) : "";
 }
 
+type LobbyTab = "host" | "join";
+
 export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
   connected,
   playerName,
@@ -26,6 +28,7 @@ export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
 }) => {
   const games = listLobbyGames();
   const [code, setCode] = useState(getInitialCode);
+  const [tab, setTab] = useState<LobbyTab>(() => (getInitialCode() ? "join" : "host"));
   const [gameType, setGameType] = useState(games[0].id);
 
   useEffect(() => {
@@ -46,10 +49,15 @@ export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
 
   const hasName = playerName.trim() !== "";
 
-  const handleJoin = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!connected || !hasName) return;
+    if (tab === "host") {
+      onCreateRoom(gameType);
+      return;
+    }
     const trimmed = code.trim().toUpperCase();
-    if (trimmed && hasName) onJoinRoom(trimmed);
+    if (trimmed) onJoinRoom(trimmed);
   };
 
   return (
@@ -59,7 +67,30 @@ export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
         {error && <p className="lobby-error">{error}</p>}
         {!connected && <p className="lobby-muted">Connecting to server...</p>}
 
-        <form onSubmit={handleJoin}>
+        <div className="lobby-tabs" role="tablist" aria-label="Lobby mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "host"}
+            data-testid="lobby-tab-host"
+            className={`lobby-tab ${tab === "host" ? "lobby-tab--active" : ""}`}
+            onClick={() => setTab("host")}
+          >
+            Host Game
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "join"}
+            data-testid="lobby-tab-join"
+            className={`lobby-tab ${tab === "join" ? "lobby-tab--active" : ""}`}
+            onClick={() => setTab("join")}
+          >
+            Join Game
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
           <div>
             <label htmlFor="username">Username: </label>
             <input
@@ -71,19 +102,19 @@ export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
             />
           </div>
 
-          <div>
-            <label htmlFor="room-code">Code: </label>
-            <input
-              id="room-code"
-              type="text"
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              placeholder="Code"
-              maxLength={5}
-            />
-          </div>
-
-          {!code.trim() && (
+          {tab === "join" ? (
+            <div>
+              <label htmlFor="room-code">Code: </label>
+              <input
+                id="room-code"
+                type="text"
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                placeholder="Code"
+                maxLength={5}
+              />
+            </div>
+          ) : (
             <div>
               <label htmlFor="game-type">Game: </label>
               <select id="game-type" value={gameType} onChange={(e) => setGameType(e.target.value)}>
@@ -97,16 +128,15 @@ export const BasicLobbyView: React.FC<BasicLobbyViewProps> = ({
           )}
 
           <div>
-            <button type="submit" disabled={!connected || !hasName || !code.trim()}>
-              Join
-            </button>
-            <button
-              type="button"
-              disabled={!connected || !hasName}
-              onClick={() => onCreateRoom(gameType)}
-            >
-              Host
-            </button>
+            {tab === "join" ? (
+              <button type="submit" disabled={!connected || !hasName || !code.trim()}>
+                Join
+              </button>
+            ) : (
+              <button type="submit" disabled={!connected || !hasName}>
+                Host
+              </button>
+            )}
           </div>
         </form>
       </div>
