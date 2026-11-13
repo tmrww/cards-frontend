@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useTurnPopup } from "../../hooks/useTurnPopup";
 import type { ChatMessage } from "../../types";
 import {
@@ -50,6 +50,34 @@ export const GameShell: React.FC<GameShellProps> = ({
 
   const [gameSoundsOn, setGameSoundsOn] = useState(isGameSoundsEnabled);
   const [chatSoundsOn, setChatSoundsOn] = useState(isChatSoundsEnabled);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
+
+  const copyRoomLink = async () => {
+    const url = new URL(window.location.pathname || "/", window.location.origin);
+    url.searchParams.set("code", roomId);
+    try {
+      await navigator.clipboard?.writeText(url.toString());
+      setCopiedLink(true);
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = window.setTimeout(() => {
+        setCopiedLink(false);
+        copyTimerRef.current = null;
+      }, 1500);
+    } catch {
+      // Clipboard API unavailable or denied.
+    }
+  };
 
   const toggleGameSounds = () => {
     const next = !gameSoundsOn;
@@ -70,9 +98,15 @@ export const GameShell: React.FC<GameShellProps> = ({
       <TurnBanner {...popup} />
 
       <div className="top-left-bar">
-        <div className="room-badge">
+        <button
+          type="button"
+          className="room-badge room-badge-btn"
+          title="Click to copy invite link"
+          onClick={() => void copyRoomLink()}
+        >
           Room: <strong>{roomId}</strong>
-        </div>
+          {copiedLink && <span className="room-copied-tag">Copied!</span>}
+        </button>
         <button type="button" className="btn-secondary btn-small" onClick={onLeave}>
           Leave Room
         </button>

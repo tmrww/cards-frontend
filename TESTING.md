@@ -218,7 +218,7 @@ Uses a fake `WebSocket` and `VITE_WS_URL=ws://test`.
 | keeps the player id using the legacy storage key | session migration | id `P_OLD01` reused and copied to the new key |
 | toggles game sounds and chat sounds from the bottom-left bar | sound toggles | `Game Sounds: On`/`Off` and `Chat Sounds: On`/`Off` update text and `aria-pressed` |
 
-## `src/games/speed/SpeedView.test.tsx` (12)
+## `src/games/speed/SpeedView.test.tsx` (13)
 | Test | Purpose | Expected |
 | :--- | :--- | :--- |
 | places opponent at N, you at S, decks on left/right, 4 center piles, and 5-card hand | setup rendering | N/S seats, `my-deck` left, `opponent-deck` right, 2 face-down stuck piles, 2 face-up discard piles, 5 hand cards |
@@ -233,6 +233,7 @@ Uses a fake `WebSocket` and `VITE_WS_URL=ws://test`.
 | sends READY when Ready Up button is clicked in waiting state | ready up | `READY` sent |
 | ignores 1-5, Space, ArrowLeft, and ArrowRight when focus is in an input | keyboard guard | no pile selection or actions when chat input focused |
 | shows winner banner with (You!) when viewer wins, and opponent name when opponent wins | winner display | `speed-winner-banner` shows winner and `(You!)` only for self |
+| copies the invite link with `?code=` when clicking the room code | room invite copy | `navigator.clipboard.writeText` called with `/?code=ROOM1` and shows `Copied!` |
 
 ---
 

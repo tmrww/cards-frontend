@@ -9,6 +9,7 @@ export type SpeedAction =
 export interface SpeedPlayerInfo {
   id: string;
   name: string;
+  handSize: number;
   deckSize: number;
 }
 

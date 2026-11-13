@@ -297,4 +297,21 @@ describe("SpeedView", () => {
       expect(oppBanner).not.toHaveTextContent("(You!)");
     });
   });
+
+  describe("room invite link copy", () => {
+    it("copies the invite link with ?code= when clicking the room code", async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", {
+        value: { writeText },
+        configurable: true,
+      });
+
+      renderSpeed();
+      const roomBtn = screen.getByRole("button", { name: /Room:\s*ROOM1/i });
+      fireEvent.click(roomBtn);
+
+      expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/?code=ROOM1`);
+      expect(await screen.findByText("Copied!")).toBeInTheDocument();
+    });
+  });
 });
