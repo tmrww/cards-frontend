@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CardView } from "../../components/common/CardView";
 import { GameShell } from "../../components/common/GameShell";
 import { PlayerSeat } from "../../components/common/PlayerSeat";
@@ -13,12 +13,17 @@ type Props = GameViewProps<SpeedPlayerView, SpeedAction>;
 
 const PLAYER_COUNT = 2;
 const DRAG_ACTIVATION_PX = 5;
+const DRAG_OUT_OVERLAP_THRESHOLD = 0.1;
+
+type SpeedControlMode = "absolute" | "dual-cards-pile" | "dual-pile-cards";
 
 interface DragState {
   card: Card;
   startX: number;
   startY: number;
   cardRect: DOMRect;
+  lastSlotLeft: number;
+  lastSlotTop: number;
 }
 
 function topCardsSomePresent(topCards?: (Card | null | undefined)[]): boolean {
@@ -31,7 +36,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
 }
 
-function isCardHalfOutsideHand(cardRect: DOMRect, dx: number, dy: number, handRect: DOMRect): boolean {
+function isCardOutsideHand(cardRect: DOMRect, dx: number, dy: number, handRect: DOMRect): boolean {
   const cardArea = cardRect.width * cardRect.height;
   if (cardArea <= 0) return false;
 
@@ -44,7 +49,23 @@ function isCardHalfOutsideHand(cardRect: DOMRect, dx: number, dy: number, handRe
   const overlapY = Math.max(0, Math.min(finalBottom, handRect.bottom) - Math.max(finalTop, handRect.top));
   const overlapArea = overlapX * overlapY;
 
-  return overlapArea / cardArea <= 0.5;
+  return overlapArea / cardArea <= DRAG_OUT_OVERLAP_THRESHOLD;
+}
+
+function getDiscardMidline(
+  pile0El: HTMLElement | null,
+  pile1El: HTMLElement | null,
+  handRect?: DOMRect
+): number {
+  const r0 = pile0El?.getBoundingClientRect();
+  const r1 = pile1El?.getBoundingClientRect();
+  if (r0 && r1 && r0.width > 0 && r1.width > 0) {
+    return (r0.right + r1.left) / 2;
+  }
+  if (handRect && handRect.width > 0) {
+    return handRect.left + handRect.width / 2;
+  }
+  return (window.innerWidth || 0) / 2;
 }
 
 function reconcileSpeedHand(current: Card[], serverHand: Card[]): Card[] {
@@ -105,6 +126,9 @@ export const SpeedView: React.FC<Props> = ({
     move: moveHandCard,
   } = useHandOrder<Card>();
   const [selectedPile, setSelectedPile] = useState<0 | 1 | null>(null);
+  const [controlMode, setControlMode] = useState<SpeedControlMode>("absolute");
+  const [selectedCardIndex, setSelectedCardIndex] = useState<number>(0);
+  const [dragHoverPile, setDragHoverPile] = useState<0 | 1 | null>(null);
   const [hasClickedReady, setHasClickedReady] = useState(false);
   const [requestedUnstuckPile, setRequestedUnstuckPile] = useState<0 | 1 | null>(null);
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
@@ -112,6 +136,8 @@ export const SpeedView: React.FC<Props> = ({
   const [dragOffset, setDragOffset] = useState<{ cardId: string; dx: number; dy: number } | null>(null);
 
   const handAreaRef = useRef<HTMLDivElement>(null);
+  const discardPile0Ref = useRef<HTMLButtonElement>(null);
+  const discardPile1Ref = useRef<HTMLButtonElement>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const prevWinnerRef = useRef<string | undefined>(undefined);
   const prevTopCardsKeyRef = useRef<string>("");
@@ -147,6 +173,16 @@ export const SpeedView: React.FC<Props> = ({
     setOrderedHand((prev) => reconcileSpeedHand(prev, serverHand));
   }, [serverHand, setOrderedHand]);
 
+  const effectiveSelectedCardIndex =
+    orderedHand.length === 0 ? 0 : Math.min(selectedCardIndex, orderedHand.length - 1);
+
+  useEffect(() => {
+    setSelectedCardIndex((prev) => {
+      if (orderedHand.length === 0) return 0;
+      return Math.min(prev, orderedHand.length - 1);
+    });
+  }, [orderedHand.length]);
+
   // Clear unstuck request when leaving PLAYING, when topCards change, or when server clears stuck.
   useEffect(() => {
     const stuckLen = view?.stuck?.length ?? 0;
@@ -179,13 +215,21 @@ export const SpeedView: React.FC<Props> = ({
   const isUnstuckRequested =
     requestedUnstuckPile !== null || Boolean(view?.stuck?.includes(playerId));
 
+  const playCardToPile = useCallback(
+    (card: Card, pile: 0 | 1) => {
+      if (gameState !== "PLAYING") return;
+      playGameSound("card_play", playerId);
+      sendAction({ type: "PLAY", payload: { cardId: card.id, pile } });
+    },
+    [gameState, playerId, sendAction]
+  );
+
   const playCard = useCallback(
     (card: Card) => {
-      if (gameState !== "PLAYING" || selectedPile === null) return;
-      playGameSound("card_play", playerId);
-      sendAction({ type: "PLAY", payload: { cardId: card.id, pile: selectedPile } });
+      if (selectedPile === null) return;
+      playCardToPile(card, selectedPile);
     },
-    [gameState, selectedPile, playerId, sendAction]
+    [selectedPile, playCardToPile]
   );
 
   const handleDraw = useCallback(() => {
@@ -219,21 +263,18 @@ export const SpeedView: React.FC<Props> = ({
     sendAction({ type: "READY" });
   }, [sendAction]);
 
-  // Global keyboard controls: ArrowLeft/ArrowRight (pile), 1-5 (play), Space (draw).
+  // Global keyboard controls: Space (draw), plus mode-specific pile/card selection and play.
   useEffect(() => {
+    const moveCardSelection = (delta: -1 | 1) => {
+      setSelectedCardIndex((prev) => {
+        if (orderedHand.length === 0) return 0;
+        const clamped = Math.min(prev, orderedHand.length - 1);
+        return Math.max(0, Math.min(orderedHand.length - 1, clamped + delta));
+      });
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (isEditableTarget(e.target) || isEditableTarget(document.activeElement)) return;
-
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        setSelectedPile(0);
-        return;
-      }
-      if (e.key === "ArrowRight") {
-        e.preventDefault();
-        setSelectedPile(1);
-        return;
-      }
 
       if (e.key === " " || e.code === "Space") {
         if (gameState === "PLAYING") {
@@ -243,17 +284,92 @@ export const SpeedView: React.FC<Props> = ({
         return;
       }
 
-      if (e.key >= "1" && e.key <= "5") {
-        const idx = Number(e.key) - 1;
-        if (idx < orderedHand.length) {
-          playCard(orderedHand[idx]);
+      if (controlMode === "absolute") {
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          setSelectedPile(0);
+          return;
+        }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          setSelectedPile(1);
+          return;
+        }
+        if (e.key >= "1" && e.key <= "5") {
+          const idx = Number(e.key) - 1;
+          if (idx < orderedHand.length) {
+            playCard(orderedHand[idx]);
+          }
+        }
+        return;
+      }
+
+      const pileLeftKey = controlMode === "dual-pile-cards" ? "a" : "ArrowLeft";
+      const pileRightKey = controlMode === "dual-pile-cards" ? "d" : "ArrowRight";
+      const cardLeftKey = controlMode === "dual-pile-cards" ? "ArrowLeft" : "a";
+      const cardRightKey = controlMode === "dual-pile-cards" ? "ArrowRight" : "d";
+      const normalizedKey = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+
+      if (normalizedKey === pileLeftKey) {
+        e.preventDefault();
+        setSelectedPile(0);
+        return;
+      }
+      if (normalizedKey === pileRightKey) {
+        e.preventDefault();
+        setSelectedPile(1);
+        return;
+      }
+      if (normalizedKey === cardLeftKey) {
+        e.preventDefault();
+        moveCardSelection(-1);
+        return;
+      }
+      if (normalizedKey === cardRightKey) {
+        e.preventDefault();
+        moveCardSelection(1);
+        return;
+      }
+
+      if (e.key === "ArrowUp" || normalizedKey === "w") {
+        e.preventDefault();
+        if (orderedHand.length > 0) {
+          playCard(orderedHand[effectiveSelectedCardIndex]);
         }
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [gameState, orderedHand, playCard, handleDraw]);
+  }, [gameState, controlMode, orderedHand, effectiveSelectedCardIndex, playCard, handleDraw]);
+
+  // Compensate drag origin when flex reordering shifts the dragged card's slot so offset isn't added twice.
+  useLayoutEffect(() => {
+    const drag = dragStateRef.current;
+    const handArea = handAreaRef.current;
+    if (!drag || !handArea) return;
+    const wrapper = handArea.querySelector<HTMLElement>(`[data-card-id="${drag.card.id}"]`);
+    if (!wrapper) return;
+    const deltaSlotX = wrapper.offsetLeft - drag.lastSlotLeft;
+    const deltaSlotY = wrapper.offsetTop - drag.lastSlotTop;
+    if (deltaSlotX === 0 && deltaSlotY === 0) return;
+
+    drag.startX += deltaSlotX;
+    drag.startY += deltaSlotY;
+    drag.lastSlotLeft = wrapper.offsetLeft;
+    drag.lastSlotTop = wrapper.offsetTop;
+    drag.cardRect = new DOMRect(
+      drag.cardRect.left + deltaSlotX,
+      drag.cardRect.top + deltaSlotY,
+      drag.cardRect.width,
+      drag.cardRect.height
+    );
+    setDragOffset((prev) =>
+      prev && prev.cardId === drag.card.id
+        ? { ...prev, dx: prev.dx - deltaSlotX, dy: prev.dy - deltaSlotY }
+        : prev
+    );
+  }, [orderedHand]);
 
   // Pointer drag-in-hand (reorder) and drag-out-of-hand (play) handling.
   useEffect(() => {
@@ -264,11 +380,21 @@ export const SpeedView: React.FC<Props> = ({
       const dy = e.clientY - drag.startY;
       setDragOffset({ cardId: drag.card.id, dx, dy });
 
-      if (Math.hypot(dx, dy) <= DRAG_ACTIVATION_PX) return;
+      if (Math.hypot(dx, dy) <= DRAG_ACTIVATION_PX) {
+        setDragHoverPile(null);
+        return;
+      }
 
       const handArea = handAreaRef.current;
       const handRect = handArea?.getBoundingClientRect();
-      if (handArea && handRect && !isCardHalfOutsideHand(drag.cardRect, dx, dy, handRect)) {
+      if (handRect && isCardOutsideHand(drag.cardRect, dx, dy, handRect)) {
+        const midline = getDiscardMidline(discardPile0Ref.current, discardPile1Ref.current, handRect);
+        setDragHoverPile(e.clientX < midline ? 0 : 1);
+        return;
+      }
+
+      setDragHoverPile(null);
+      if (handArea && handRect) {
         const wrappers = Array.from(handArea.querySelectorAll<HTMLElement>(".speed-card-wrapper"));
         const currentOrder = orderedHandRef.current;
         const fromIndex = currentOrder.findIndex((c) => c.id === drag.card.id);
@@ -286,6 +412,7 @@ export const SpeedView: React.FC<Props> = ({
       if (!drag) return;
       dragStateRef.current = null;
       setDragOffset(null);
+      setDragHoverPile(null);
 
       if (!shouldCheckPlay) return;
       const dx = e.clientX - drag.startX;
@@ -293,8 +420,10 @@ export const SpeedView: React.FC<Props> = ({
       if (Math.hypot(dx, dy) <= DRAG_ACTIVATION_PX) return;
 
       const handRect = handAreaRef.current?.getBoundingClientRect();
-      if (handRect && isCardHalfOutsideHand(drag.cardRect, dx, dy, handRect)) {
-        playCard(drag.card);
+      if (handRect && isCardOutsideHand(drag.cardRect, dx, dy, handRect)) {
+        const midline = getDiscardMidline(discardPile0Ref.current, discardPile1Ref.current, handRect);
+        const hoverPile: 0 | 1 = e.clientX < midline ? 0 : 1;
+        playCardToPile(drag.card, hoverPile);
       }
     };
 
@@ -309,7 +438,7 @@ export const SpeedView: React.FC<Props> = ({
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, [playCard, orderedHandRef, moveHandCard]);
+  }, [playCardToPile, orderedHandRef, moveHandCard]);
 
   const handleCardPointerDown = (e: React.PointerEvent<HTMLDivElement>, card: Card) => {
     if (e.button !== 0 && e.button !== undefined) return;
@@ -318,6 +447,8 @@ export const SpeedView: React.FC<Props> = ({
       startX: e.clientX,
       startY: e.clientY,
       cardRect: e.currentTarget.getBoundingClientRect(),
+      lastSlotLeft: e.currentTarget.offsetLeft,
+      lastSlotTop: e.currentTarget.offsetTop,
     };
     setDragOffset({ cardId: card.id, dx: 0, dy: 0 });
   };
@@ -391,9 +522,10 @@ export const SpeedView: React.FC<Props> = ({
 
   const renderDiscardPile = (index: 0 | 1) => {
     const card = topCards[index];
-    const isSelected = selectedPile === index;
+    const isSelected = dragHoverPile !== null ? dragHoverPile === index : selectedPile === index;
     return (
       <button
+        ref={index === 0 ? discardPile0Ref : discardPile1Ref}
         type="button"
         className={`speed-pile speed-discard-pile ${isSelected ? "speed-discard-pile--selected" : ""} ${!card ? "speed-discard-pile--empty" : ""
           }`}
@@ -424,19 +556,46 @@ export const SpeedView: React.FC<Props> = ({
           <span className="info-label">Status:</span>
           <span className="info-val">{view ? gameState : "CONNECTING"}</span>
         </div>
-        {/* <div className="info-row">
-          <span className="info-label">Selected Pile:</span>
-          <span className="info-val">
-            {selectedPile === null ? "None" : selectedPile === 0 ? "Left (1)" : "Right (2)"}
-          </span>
-        </div> */}
         <div className="info-row">
-          <span className="info-label">Select Pile:</span>
-          <span className="info-val">Arrow keys / Click</span>
+          <label className="info-label" htmlFor="speed-control-mode-select">
+            Controls:
+          </label>
+          <select
+            id="speed-control-mode-select"
+            className="info-select"
+            data-testid="speed-control-mode"
+            value={controlMode}
+            onChange={(e) => {
+              setControlMode(e.target.value as SpeedControlMode);
+              e.currentTarget.blur();
+            }}
+          >
+            <option value="absolute">Absolute</option>
+            <option value="dual-cards-pile">Dual (Cards/Pile)</option>
+            <option value="dual-pile-cards">Dual (Pile/Cards)</option>
+          </select>
         </div>
         <div className="info-row">
+          <span className="info-label">Select Pile:</span>
+          <span className="info-val">
+            {controlMode === "dual-pile-cards" ? "A / D or Click" : "← / → or Click"}
+          </span>
+        </div>
+        {controlMode !== "absolute" && (
+          <div className="info-row">
+            <span className="info-label">Select Card:</span>
+            <span className="info-val">
+              {controlMode === "dual-pile-cards" ? "← / →" : "A / D"}
+            </span>
+          </div>
+        )}
+        <div className="info-row">
           <span className="info-label">Play Card:</span>
-          <span className="info-val">1-5 / Double click / Drag</span>
+          <span className="info-val">
+            {controlMode !== "absolute"
+              ? "↑ or W / Double-click / Drag out (left/right)"
+              : "1-5 / Double-click / Drag out (left/right)"}
+          </span>
         </div>
         <div className="info-row">
           <span className="info-label">Draw Card:</span>
@@ -542,12 +701,16 @@ export const SpeedView: React.FC<Props> = ({
           )}
           {gameState === "PLAYING" && selectedPile === null && (
             <span className="speed-pile-hint" data-testid="speed-pile-hint">
-              Select a discard pile (← / → or click) to play
+              Select a discard pile ({controlMode === "dual-pile-cards" ? "A / D" : "← / →"} or click), or drag a card out onto left/right side
             </span>
           )}
           {gameState === "PLAYING" && selectedPile !== null && (
             <span className="drag-hint">
-              Playing to Pile {selectedPile + 1} • Double-click, drag out, or press 1–5
+              {controlMode === "dual-cards-pile"
+                ? `Playing to Pile ${selectedPile + 1} • A/D select, W/↑ play, double-click, or drag out`
+                : controlMode === "dual-pile-cards"
+                ? `Playing to Pile ${selectedPile + 1} • ←/→ select, W/↑ play, double-click, or drag out`
+                : `Playing to Pile ${selectedPile + 1} • Press 1–5, double-click, or drag out`}
             </span>
           )}
         </div>
@@ -563,6 +726,7 @@ export const SpeedView: React.FC<Props> = ({
         ) : (
           orderedHand.map((card, index) => {
             const isDragging = dragOffset?.cardId === card.id;
+            const isCardSelected = controlMode !== "absolute" && index === effectiveSelectedCardIndex;
             const style: React.CSSProperties | undefined = isDragging
               ? { transform: `translate(${dragOffset.dx}px, ${dragOffset.dy}px)` }
               : undefined;
@@ -571,12 +735,15 @@ export const SpeedView: React.FC<Props> = ({
                 key={card.id}
                 className={`speed-card-wrapper ${isDragging ? "speed-card-wrapper--dragging" : ""}`}
                 data-testid={`speed-card-${index}`}
+                data-card-id={card.id}
+                data-selected={isCardSelected ? "true" : undefined}
                 style={style}
                 onPointerDown={(e) => handleCardPointerDown(e, card)}
                 onDoubleClick={() => playCard(card)}
               >
                 <CardView
                   card={card}
+                  selected={isCardSelected}
                   dragging={isDragging}
                   badges={<span className="speed-card-key-badge">{index + 1}</span>}
                 />

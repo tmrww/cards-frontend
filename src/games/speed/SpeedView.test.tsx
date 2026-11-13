@@ -140,23 +140,19 @@ describe("SpeedView", () => {
   });
 
   describe("card play guard", () => {
-    it("does not send PLAY on double-click, drag-out, or 1-5 keys when no pile is selected", () => {
+    it("does not send PLAY on double-click, 1-5 keys, or dual W/ArrowUp when no pile is selected", () => {
       const { sendAction } = renderSpeed();
-      const handArea = screen.getByTestId("speed-hand-area");
       const card0 = screen.getByTestId("speed-card-0");
-
-      vi.spyOn(handArea, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 400, 500, 120));
-      vi.spyOn(card0, "getBoundingClientRect").mockReturnValue(new DOMRect(50, 410, 62, 90));
 
       // Double-click
       fireEvent.doubleClick(card0);
-      // Number keys 1-5
+      // Number keys 1-5 in absolute mode
       fireEvent.keyDown(window, { key: "1" });
       fireEvent.keyDown(window, { key: "5" });
-      // Drag out >= half
-      fireEvent.pointerDown(card0, { button: 0, clientX: 80, clientY: 450 });
-      fireEvent.pointerMove(window, { clientX: 80, clientY: 300 });
-      fireEvent.pointerUp(window, { clientX: 80, clientY: 300 });
+      // W / ArrowUp in dual mode
+      fireEvent.change(screen.getByTestId("speed-control-mode"), { target: { value: "dual-cards-pile" } });
+      fireEvent.keyDown(window, { key: "w" });
+      fireEvent.keyDown(window, { key: "ArrowUp" });
 
       expect(sendAction).not.toHaveBeenCalled();
     });
@@ -177,32 +173,85 @@ describe("SpeedView", () => {
   });
 
   describe("drag-out play", () => {
-    it("does not play when dragged less than half out of hand area, and plays when >= half out", () => {
+    it("does not play when dragged < 90% out (e.g. 50% or 80%) and plays when >= 90% out", () => {
       const { sendAction } = renderSpeed();
-      fireEvent.click(screen.getByTestId("discard-pile-0"));
 
       const handArea = screen.getByTestId("speed-hand-area");
       const card0 = screen.getByTestId("speed-card-0");
+      const pile0 = screen.getByTestId("discard-pile-0");
+      const pile1 = screen.getByTestId("discard-pile-1");
 
       // Hand area: y from 400 to 520. Card: y from 410 to 500 (height 90, width 62).
       vi.spyOn(handArea, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 400, 500, 120));
       vi.spyOn(card0, "getBoundingClientRect").mockReturnValue(new DOMRect(50, 410, 62, 90));
+      // Midline between pile0 (right=260) and pile1 (left=300) is 280.
+      vi.spyOn(pile0, "getBoundingClientRect").mockReturnValue(new DOMRect(180, 200, 80, 110));
+      vi.spyOn(pile1, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 200, 80, 110));
 
-      // Drag up by 30px -> final top=380, bottom=470 -> overlapY = 70/90 = 77.8% inside (> 50%) -> no play
-      fireEvent.pointerDown(card0, { button: 0, clientX: 80, clientY: 450 });
-      fireEvent.pointerMove(window, { clientX: 80, clientY: 420 });
-      fireEvent.pointerUp(window, { clientX: 80, clientY: 420 });
-      expect(sendAction).not.toHaveBeenCalled();
-
-      // Drag up by 55px -> final top=355, bottom=445 -> overlapY = 45/90 = 50% inside (<= 50%) -> plays
+      // Drag up by 55px -> final top=355, bottom=445 -> overlapY = 45/90 = 50% inside (50% out) -> no play
       fireEvent.pointerDown(card0, { button: 0, clientX: 80, clientY: 450 });
       fireEvent.pointerMove(window, { clientX: 80, clientY: 395 });
       fireEvent.pointerUp(window, { clientX: 80, clientY: 395 });
+      expect(sendAction).not.toHaveBeenCalled();
+
+      // Drag up by 81px -> final top=329, bottom=419 -> overlapY = 19/90 = 21.1% inside (~79% out) -> no play
+      fireEvent.pointerDown(card0, { button: 0, clientX: 80, clientY: 450 });
+      fireEvent.pointerMove(window, { clientX: 80, clientY: 369 });
+      fireEvent.pointerUp(window, { clientX: 80, clientY: 369 });
+      expect(sendAction).not.toHaveBeenCalled();
+
+      // Drag up by 91px -> final top=319, bottom=409 -> overlapY = 9/90 = 10% inside (90% out) -> plays to pile 0 on left side even with no pile selected
+      fireEvent.pointerDown(card0, { button: 0, clientX: 80, clientY: 450 });
+      fireEvent.pointerMove(window, { clientX: 200, clientY: 359 });
+      fireEvent.pointerUp(window, { clientX: 200, clientY: 359 });
       expect(sendAction).toHaveBeenCalledTimes(1);
-      expect(sendAction).toHaveBeenCalledWith({
+      expect(sendAction).toHaveBeenLastCalledWith({
         type: "PLAY",
         payload: { cardId: "h1", pile: 0 },
       });
+
+      // Drag >= 90% out on right side of midline (> 280) plays to pile 1 even with no pile selected
+      fireEvent.pointerDown(card0, { button: 0, clientX: 80, clientY: 450 });
+      fireEvent.pointerMove(window, { clientX: 340, clientY: 350 });
+      fireEvent.pointerUp(window, { clientX: 340, clientY: 350 });
+      expect(sendAction).toHaveBeenCalledTimes(2);
+      expect(sendAction).toHaveBeenLastCalledWith({
+        type: "PLAY",
+        payload: { cardId: "h1", pile: 1 },
+      });
+    });
+
+    it("highlights target discard pile with .speed-discard-pile--selected while dragging >= 90% out and clears on release", () => {
+      renderSpeed();
+
+      const handArea = screen.getByTestId("speed-hand-area");
+      const card0 = screen.getByTestId("speed-card-0");
+      const pile0 = screen.getByTestId("discard-pile-0");
+      const pile1 = screen.getByTestId("discard-pile-1");
+
+      vi.spyOn(handArea, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 400, 500, 120));
+      vi.spyOn(card0, "getBoundingClientRect").mockReturnValue(new DOMRect(50, 410, 62, 90));
+      vi.spyOn(pile0, "getBoundingClientRect").mockReturnValue(new DOMRect(180, 200, 80, 110));
+      vi.spyOn(pile1, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 200, 80, 110));
+
+      expect(pile0).not.toHaveClass("speed-discard-pile--selected");
+      expect(pile1).not.toHaveClass("speed-discard-pile--selected");
+
+      fireEvent.pointerDown(card0, { button: 0, clientX: 80, clientY: 450 });
+      // Hover >= 90% out on left side -> pile 0 highlighted
+      fireEvent.pointerMove(window, { clientX: 200, clientY: 350 });
+      expect(pile0).toHaveClass("speed-discard-pile--selected");
+      expect(pile1).not.toHaveClass("speed-discard-pile--selected");
+
+      // Move to right side -> pile 1 highlighted
+      fireEvent.pointerMove(window, { clientX: 340, clientY: 350 });
+      expect(pile0).not.toHaveClass("speed-discard-pile--selected");
+      expect(pile1).toHaveClass("speed-discard-pile--selected");
+
+      // Release clears hover highlight
+      fireEvent.pointerUp(window, { clientX: 340, clientY: 350 });
+      expect(pile0).not.toHaveClass("speed-discard-pile--selected");
+      expect(pile1).not.toHaveClass("speed-discard-pile--selected");
     });
 
     it("reorders cards in hand when dragged within the hand area without playing", () => {
@@ -262,6 +311,151 @@ describe("SpeedView", () => {
         type: "PLAY",
         payload: { cardId: "h3", pile: 1 },
       });
+    });
+  });
+
+  describe("control mode dropdown", () => {
+    it("defaults to absolute mode where 1-5 play, Space draws, and A/D/W/ArrowUp do not select or play", () => {
+      const { sendAction } = renderSpeed();
+      const modeSelect = screen.getByTestId("speed-control-mode") as HTMLSelectElement;
+      expect(modeSelect.value).toBe("absolute");
+
+      fireEvent.keyDown(window, { key: "ArrowLeft" });
+      expect(screen.getByTestId("discard-pile-0")).toHaveAttribute("aria-pressed", "true");
+
+      // A/D/W/ArrowUp should do nothing in absolute mode
+      fireEvent.keyDown(window, { key: "d" });
+      fireEvent.keyDown(window, { key: "D" });
+      fireEvent.keyDown(window, { key: "a" });
+      fireEvent.keyDown(window, { key: "w" });
+      fireEvent.keyDown(window, { key: "ArrowUp" });
+      expect(screen.getByTestId("speed-card-0")).not.toHaveAttribute("data-selected", "true");
+      expect(sendAction).not.toHaveBeenCalled();
+
+      // 1-5 and Space still work
+      fireEvent.keyDown(window, { key: "2" });
+      fireEvent.keyDown(window, { key: " ", code: "Space" });
+      expect(sendAction).toHaveBeenNthCalledWith(1, {
+        type: "PLAY",
+        payload: { cardId: "h2", pile: 0 },
+      });
+      expect(sendAction).toHaveBeenNthCalledWith(2, { type: "DRAW" });
+    });
+
+    it("supports dual-cards-pile mode: A/D select card, ArrowLeft/Right select pile, W/ArrowUp play, Space draws, and selection persists/clamps", () => {
+      const { sendAction, rerender, sendChat, clearError, leaveRoom } = renderSpeed();
+      const modeSelect = screen.getByTestId("speed-control-mode") as HTMLSelectElement;
+
+      modeSelect.focus();
+      expect(document.activeElement).toBe(modeSelect);
+      fireEvent.change(modeSelect, { target: { value: "dual-cards-pile" } });
+      expect(modeSelect.value).toBe("dual-cards-pile");
+      expect(document.activeElement).not.toBe(modeSelect);
+
+      // Card 0 initially selected in dual mode
+      expect(screen.getByTestId("speed-card-0")).toHaveAttribute("data-selected", "true");
+
+      // D moves selection right, A moves left (clamped at 0)
+      fireEvent.keyDown(window, { key: "a" });
+      expect(screen.getByTestId("speed-card-0")).toHaveAttribute("data-selected", "true");
+
+      fireEvent.keyDown(window, { key: "d" });
+      fireEvent.keyDown(window, { key: "D" });
+      fireEvent.keyDown(window, { key: "d" });
+      expect(screen.getByTestId("speed-card-3")).toHaveAttribute("data-selected", "true");
+      expect(screen.getByTestId("speed-card-0")).not.toHaveAttribute("data-selected", "true");
+
+      // Select pile 1 with ArrowRight and play with W
+      fireEvent.keyDown(window, { key: "ArrowRight" });
+      expect(screen.getByTestId("discard-pile-1")).toHaveAttribute("aria-pressed", "true");
+
+      fireEvent.keyDown(window, { key: "w" });
+      expect(sendAction).toHaveBeenLastCalledWith({
+        type: "PLAY",
+        payload: { cardId: "h4", pile: 1 },
+      });
+
+      // Hand shrinks by 1 (4 cards left) -> selection index 3 persists at index 3
+      const viewAfterFirstPlay = makeSpeedView({
+        hand: [card("h1", 0, 2), card("h2", 1, 5), card("h3", 2, 8), card("h5", 0, 1)],
+      });
+      rerender(
+        <SpeedView
+          roomId="ROOM1"
+          playerId="p0"
+          view={viewAfterFirstPlay}
+          chatMessages={[]}
+          error={null}
+          sendAction={sendAction}
+          sendChat={sendChat}
+          clearError={clearError}
+          leaveRoom={leaveRoom}
+        />
+      );
+      expect(screen.getByTestId("speed-card-3")).toHaveAttribute("data-selected", "true");
+
+      // ArrowUp plays the persisted selected card (h5 at index 3)
+      fireEvent.keyDown(window, { key: "ArrowLeft" });
+      fireEvent.keyDown(window, { key: "ArrowUp" });
+      expect(sendAction).toHaveBeenLastCalledWith({
+        type: "PLAY",
+        payload: { cardId: "h5", pile: 0 },
+      });
+
+      // Hand shrinks to 2 cards -> selection clamps to index 1
+      const viewAfterShrink = makeSpeedView({
+        hand: [card("h1", 0, 2), card("h2", 1, 5)],
+      });
+      rerender(
+        <SpeedView
+          roomId="ROOM1"
+          playerId="p0"
+          view={viewAfterShrink}
+          chatMessages={[]}
+          error={null}
+          sendAction={sendAction}
+          sendChat={sendChat}
+          clearError={clearError}
+          leaveRoom={leaveRoom}
+        />
+      );
+      expect(screen.getByTestId("speed-card-1")).toHaveAttribute("data-selected", "true");
+
+      // Space still draws in dual-cards-pile mode
+      fireEvent.keyDown(window, { key: " ", code: "Space" });
+      expect(sendAction).toHaveBeenLastCalledWith({ type: "DRAW" });
+    });
+
+    it("supports dual-pile-cards mode: A/D select pile, ArrowLeft/Right select card, W/ArrowUp play, Space draws", () => {
+      const { sendAction } = renderSpeed();
+      const modeSelect = screen.getByTestId("speed-control-mode") as HTMLSelectElement;
+
+      fireEvent.change(modeSelect, { target: { value: "dual-pile-cards" } });
+      expect(modeSelect.value).toBe("dual-pile-cards");
+
+      // A/D select pile 0/1
+      fireEvent.keyDown(window, { key: "d" });
+      expect(screen.getByTestId("discard-pile-1")).toHaveAttribute("aria-pressed", "true");
+      fireEvent.keyDown(window, { key: "A" });
+      expect(screen.getByTestId("discard-pile-0")).toHaveAttribute("aria-pressed", "true");
+
+      // ArrowRight/ArrowLeft select card in hand
+      expect(screen.getByTestId("speed-card-0")).toHaveAttribute("data-selected", "true");
+      fireEvent.keyDown(window, { key: "ArrowRight" });
+      fireEvent.keyDown(window, { key: "ArrowRight" });
+      expect(screen.getByTestId("speed-card-2")).toHaveAttribute("data-selected", "true");
+      fireEvent.keyDown(window, { key: "ArrowLeft" });
+      expect(screen.getByTestId("speed-card-1")).toHaveAttribute("data-selected", "true");
+
+      // W plays card 1 (h2) to pile 0; Space draws
+      fireEvent.keyDown(window, { key: "w" });
+      expect(sendAction).toHaveBeenCalledWith({
+        type: "PLAY",
+        payload: { cardId: "h2", pile: 0 },
+      });
+
+      fireEvent.keyDown(window, { key: " ", code: "Space" });
+      expect(sendAction).toHaveBeenLastCalledWith({ type: "DRAW" });
     });
   });
 
@@ -326,19 +520,40 @@ describe("SpeedView", () => {
   });
 
   describe("keyboard guard", () => {
-    it("ignores 1-5, Space, ArrowLeft, and ArrowRight when focus is in an input", () => {
-      const { sendAction } = renderSpeed();
+    it("ignores game keys when focus is in an input, select, or textarea", () => {
+      const { sendAction, container } = renderSpeed();
       const chatInput = screen.getByPlaceholderText("Type a message...");
-      chatInput.focus();
+      const modeSelect = screen.getByTestId("speed-control-mode");
+      const textarea = document.createElement("textarea");
+      container.appendChild(textarea);
 
+      // Input focus (absolute mode)
+      chatInput.focus();
       fireEvent.keyDown(chatInput, { key: "ArrowLeft" });
       fireEvent.keyDown(chatInput, { key: "ArrowRight" });
       fireEvent.keyDown(chatInput, { key: " ", code: "Space" });
       fireEvent.keyDown(chatInput, { key: "1" });
       fireEvent.keyDown(chatInput, { key: "2" });
 
+      // Select focus (switch to dual mode, then test keys while select is focused)
+      fireEvent.change(modeSelect, { target: { value: "dual-cards-pile" } });
+      modeSelect.focus();
+      fireEvent.keyDown(modeSelect, { key: "ArrowLeft" });
+      fireEvent.keyDown(modeSelect, { key: "d" });
+      fireEvent.keyDown(modeSelect, { key: "w" });
+      fireEvent.keyDown(modeSelect, { key: "ArrowUp" });
+      fireEvent.keyDown(modeSelect, { key: " ", code: "Space" });
+
+      // Textarea focus
+      textarea.focus();
+      fireEvent.keyDown(textarea, { key: "ArrowRight" });
+      fireEvent.keyDown(textarea, { key: "a" });
+      fireEvent.keyDown(textarea, { key: "W" });
+      fireEvent.keyDown(textarea, { key: " ", code: "Space" });
+
       expect(screen.getByTestId("discard-pile-0")).toHaveAttribute("aria-pressed", "false");
       expect(screen.getByTestId("discard-pile-1")).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByTestId("speed-card-0")).toHaveAttribute("data-selected", "true");
       expect(sendAction).not.toHaveBeenCalled();
     });
   });

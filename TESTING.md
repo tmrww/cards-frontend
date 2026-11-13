@@ -14,7 +14,7 @@ npx vitest run -t "wildcard"  # tests whose name matches
 - Suit ids in tests: 0 ♠, 1 ♥, 2 ♦, 3 ♣, -1 small joker, -2 big joker. Value 1 is the Ace.
 - **Every new test must be added to this file in the same change** (and to the changelog at the bottom).
 
-Total: 16 files, 161 tests.
+Total: 16 files, 165 tests.
 
 ---
 
@@ -220,22 +220,26 @@ Uses a fake `WebSocket` and `VITE_WS_URL=ws://test`.
 | keeps the player id using the legacy storage key | session migration | id `P_OLD01` reused and copied to the new key |
 | toggles game sounds and chat sounds from the bottom-left bar | sound toggles | `Game Sounds: On`/`Off` and `Chat Sounds: On`/`Off` update text and `aria-pressed` |
 
-## `src/games/speed/SpeedView.test.tsx` (17)
+## `src/games/speed/SpeedView.test.tsx` (21)
 | Test | Purpose | Expected |
 | :--- | :--- | :--- |
 | places opponent at N, you at S, decks on left/right, 4 center piles, and 5-card hand | setup rendering | N/S seats, `my-deck` left, `opponent-deck` right, 2 face-down stuck piles, 2 face-up discard piles, 5 hand cards |
 | starts with no pile selected and persists click selection | discard pile selection | `aria-pressed="false"` initially; click selects and persists across actions |
 | selects pile 0 with ArrowLeft and pile 1 with ArrowRight | keyboard pile selection | `ArrowLeft` → pile 0, `ArrowRight` → pile 1 |
-| does not send PLAY on double-click, drag-out, or 1-5 keys when no pile is selected | card play guard | `sendAction` not called |
+| does not send PLAY on double-click, 1-5 keys, or dual W/ArrowUp when no pile is selected | card play guard | `sendAction` not called |
 | plays `{ type: 'PLAY', payload: { cardId, pile } }` to the selected pile | double-click play | `PLAY` sent with card id and selected pile |
-| does not play when dragged less than half out of hand area, and plays when >= half out | drag-out play | `< 50%` out ignored; `>= 50%` out sends `PLAY` |
+| does not play when dragged < 90% out (e.g. 50% or 80%) and plays when >= 90% out | drag-out play | `< 90%` out ignored; `>= 90%` out sends `PLAY` to pile `0` (left of midline) or `1` (right of midline) even with no pile selected |
+| highlights target discard pile with .speed-discard-pile--selected while dragging >= 90% out and clears on release | drag-out hover highlight | `.speed-discard-pile--selected` tracks left/right side of midline and clears on `pointerup` |
 | reorders cards in hand when dragged within the hand area without playing | hand drag reorder | reorders cards in DOM without sending `PLAY`; number key plays moved card |
 | plays 1st..5th card to selected pile and ignores keys beyond hand length | number keys 1-5 | `1`/`3` play cards 0/2; `4`/`5` ignored on 3-card hand |
+| defaults to absolute mode where 1-5 play, Space draws, and A/D/W/ArrowUp do not select or play | control mode default (`absolute`) | `speed-control-mode` defaults to `"absolute"`; `A`/`D`/`W`/`ArrowUp` ignored; `1-5` and `Space` work |
+| supports dual-cards-pile mode: A/D select card, ArrowLeft/Right select pile, W/ArrowUp play, Space draws, and selection persists/clamps | control mode (`dual-cards-pile`) | `A`/`D` move `data-selected` card index (persists after play, clamps on hand shrink); `ArrowLeft`/`ArrowRight` select pile; `W`/`ArrowUp` play; `Space` draws |
+| supports dual-pile-cards mode: A/D select pile, ArrowLeft/Right select card, W/ArrowUp play, Space draws | control mode (`dual-pile-cards`) | `A`/`D` select pile; `ArrowLeft`/`ArrowRight` move `data-selected` card index; `W`/`ArrowUp` play; `Space` draws |
 | sends DRAW on Spacebar and Draw button, and UNSTUCK on Unstuck button | draw & unstuck | `DRAW` and `UNSTUCK` sent |
 | sends DRAW when clicking/tapping the play area or deck, but not when clicking a discard pile | tap play area draw | discard pile click selects only; `speed-play-area` & `my-deck` click send `DRAW` |
 | sends READY when Ready Up button is clicked in waiting state | ready up | `READY` sent |
 | highlights the clicked stuck pile or left pile on Unstuck button and shows Unstuck Requested | stuck pile unstuck | `UNSTUCK` sent, `"Unstuck Requested"` shown, `.speed-stuck-pile--requested` added to clicked pile (or `stuck-pile-0` for button) |
-| ignores 1-5, Space, ArrowLeft, and ArrowRight when focus is in an input | keyboard guard | no pile selection or actions when chat input focused |
+| ignores game keys when focus is in an input, select, or textarea | keyboard guard | no pile selection, card selection, or actions when `input`, `select`, or `textarea` is focused |
 | renders speed-countdown-banner for START and displays starting hand before PLAYING | start countdown | `speed-countdown-banner` shows `Game starting in ...` and 5 starting hand cards |
 | renders speed-countdown-banner for UNSTUCK | unstuck countdown | `speed-countdown-banner` shows `Unstucking in ...` |
 | shows winner banner with (You!) when viewer wins, and opponent name when opponent wins | winner display | `speed-winner-banner` shows winner and `(You!)` only for self |
@@ -247,4 +251,5 @@ Uses a fake `WebSocket` and `VITE_WS_URL=ws://test`.
 - Initial suite (Phase 0-5): all 142 tests above.
 - Added `src/games/speed/SpeedView.test.tsx` (11 tests) for Speed game UI.
 - Updated `src/utils/sound.test.ts` (no cooldown on `playGameSound`), `src/components/BasicLobbyView.test.tsx` (11 tests), and `src/games/speed/SpeedView.test.tsx` (17 tests: hand reorder, stuck pile unstuck highlight, and `COUNTDOWN` state).
+- Updated `src/games/speed/SpeedView.test.tsx` (20 tests: `>= 90%` drag-out + midline pile targeting + hover highlight, `speed-control-mode` `"absolute"` vs `"dual"` controls, and `input`/`select`/`textarea` keyboard guard).
 
